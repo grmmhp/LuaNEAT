@@ -1,0 +1,1 @@
+start "" "%PROGRAMFILES%\LOVE\love" .
