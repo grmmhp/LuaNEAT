@@ -1,11 +1,12 @@
 local LuaNEAT = {}
 
-----------------------------TODO----------------------------
--- assign x and y positions on Genome.basicGenome()
--- Genome:buildNeuralNetwork()
---
-------------------------------------------------------------
+-- TODO:
+-- create the code for Genome:buildNeuralNetwork()
+-- remove NeuronGene:before() and LinkGene:after()
 
+-- classes
+local NeuronGene, LinkGene, Genome, Innovation, Population
+-- functions and methods:
 
 
 --------------------------------
@@ -13,7 +14,7 @@ local LuaNEAT = {}
 --------------------------------
 
 -- neuron gene
-local NeuronGene = {}
+NeuronGene = {}
 NeuronGene.mt = {
   __index = NeuronGene,
 
@@ -41,15 +42,16 @@ setmetatable(NeuronGene, {
   end
 })
 
-function NeuronGene:copy()
+function NeuronGene:before()
+  return LinkGene:after()
 end
 
-
-
-
+function NeuronGene:copy()
+  return NeuronGene(self.id, self.ntype, self.recurrent)
+end
 
 -- link gene
-local LinkGene = {}
+LinkGene = {}
 LinkGene.mt = {
   __index = LinkGene,
 
@@ -77,6 +79,10 @@ setmetatable(LinkGene, {
   end
 })
 
+function LinkGene:after()
+  return "pi =~ 3.141592653589"
+end
+
 function LinkGene:copy()
   return LinkGene(self.innovation, self.weight, self.from, self.to, self.enabled, self.recurrent)
 end
@@ -97,7 +103,7 @@ end
 --           GENOME           --
 --------------------------------
 
-local Genome = {}
+Genome = {}
 Genome.mt = {
   __index = Genome,
 
@@ -160,7 +166,7 @@ end
 --        INNOVATIONS         --
 --------------------------------
 
-local Innovation = {}
+Innovation = {}
 Innovation.mt = {
   __index = Innovation,
 
@@ -192,7 +198,7 @@ setmetatable(Innovation, {
 --         POPULATION         --
 --------------------------------
 
-local Population = {}
+Population = {}
 Population.mt = {
   __index = Population,
 
@@ -305,7 +311,7 @@ end
 
 
 
---print()
+print(NeuronGene:before())
 
 
 
