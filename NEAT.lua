@@ -1,14 +1,14 @@
 math.randomseed(os.time())
 
--- prints texts only when DEBUG is true
+-- prints only when DEBUG is true
 local DEBUG = true
 
 local oldprint = print
-print = function(str)
+local print = function(str)
   if DEBUG then oldprint(str) end
 end
 
--- Lua's math.random() is glitchy, this will fix:
+-- Lua's math.random() is glitchy on Windows, this will fix:
 local oldrandom = math.random
 math.random = function(_min, _max)
   local out
@@ -41,12 +41,17 @@ end
 
 local LuaNEAT = {}
 
+local function sigmoid(x, p)
+  local e = 2.71828182846
+  return 1/(1+e^(-x*p))
+end
+
 -- TODO:
 -- code Genome:buildNeuralNetwork()
 -- code Genome:mutate()
+-- test mutate alter response
 -- user needs to set random seed for LuaNEAT to work
--- test mutate add link
--- remove randomseed and randomfix
+-- remove randomseed, math.random and oldrandom
 
 -- rates prototype:
 local ratesPrototype = {
@@ -137,7 +142,7 @@ end
 function Genome:buildNeuralNetwork()
 end
 
-function Genome:mutate(rates)
+function Genome:mutate(rates, innovationList)
   -- mutations in this implementation:
 
   -- add link
@@ -224,7 +229,110 @@ function Genome:mutateAddLink(rates, innovationList)
   print("FINISHED MUTATING LINK")
 end
 
-function Genome:mutateAddNode(rates)
+function Genome:mutateAddNode(rates, innovationList)
+  print("INITIATING NODE MUTATION\nGenome ID is ".. self.id .. "\n")
+  local link
+  local sizeThreshold = self:getBaseNeuronsAmount()+5
+  local findLinkAttempts = 20
+
+  if #self.LinkGeneList < sizeThreshold then
+    -- genome is too small; will choose an old link
+    print("genome is too small; will choose older links")
+    for n=1, findLinkAttempts do
+      print("#".. n .. " attempt to find link")
+      link = self:getRandomOldLink()
+
+      local fromNeuron = self:getNeuron(link.from)
+
+      if (link.enabled) and (not link.recurrent) and (fromNeuron.ntype~="bias") then
+        print("found link ".. link.innovation)
+        break
+      else
+        link = nil
+      end
+    end
+  else
+    -- genome is of sufficient size
+    print("genome is of sufficient size; will choose any link")
+    while true do
+      link = self:getRandomLink()
+
+      local fromNeuron = self:getNeuron(link.from)
+
+      if (link.enabled) and (not link.recurrent) and (fromNeuron.ntype~="bias") then
+        break
+      end
+    end
+  end
+
+  if link == nil then print("COULD NOT FIND LINK"); return end
+
+  -- we will disable this link and create two others
+  link.enabled = false
+
+  local neuron    -- the neuron to be added
+  local linkFrom  -- the new link coming to this neuron
+  local linkTo    -- the new link coming from this neuron
+
+  local weight = link.weight
+
+  local fromNeuron = self:getNeuron(link.from)
+  local toNeuron = self:getNeuron(link.to)
+
+  local new_x = (fromNeuron.x+toNeuron.x)/2
+  local new_y = (fromNeuron.y+toNeuron.y)/2
+
+  -- checks if innovation has already been created
+  local id = innovationList:getID("new_neuron", link.from, link.to)
+
+  if id == -1 then
+    -- this is a new innovation
+    -- itype, from, to, neuronID, ntype
+    print("new innovation found")
+
+    local neuronID = innovationList:newNeuronID()
+    local neuronInnovation = Innovation("new_neuron", fromNeuron.id, toNeuron.id, neuronID, "hidden")
+    local linkFromInnovation = Innovation("new_link", fromNeuron.id, neuronID, -1, "none")
+    local linkToInnovation = Innovation("new_link", neuronID, toNeuron.id, -1, "none")
+
+    -- adding innovations to database
+    innovationList:push(neuronInnovation)
+    local linkFromID = innovationList:push(linkFromInnovation)
+    local linkToID = innovationList:push(linkToInnovation)
+
+    neuron = NeuronGene(neuronID, "hidden", false, 0, new_x, new_y) --id, ntype, recurrent, response, x, y
+
+    linkFrom = LinkGene(linkFromID, 0, fromNeuron.id, neuronID, true, false)-- innovation, weight, from, to, enabled, recurrent
+    linkTo = LinkGene(linkToID, 0, neuronID, toNeuron.id, true, false)
+  else
+    -- this innovation was already discovered
+    print("innovation already discovered; will get IDs")
+
+    local neuronID = innovationList:getNeuronID("new_neuron", fromNeuron.id, toNeuron.id)
+
+    while self:alreadyHaveThisNeuronID(neuronID) do
+      neuronID = innovationList:getNextNeuronID(neuronID, "new_neuron", fromNeuron.id, toNeuron.id)
+    end
+
+    local neuronInnovation = innovationList:getNeuronInnovationID("new_neuron", fromNeuron.id, toNeuron.id, neuronID)
+    local linkFromInnovation = innovationList:getID("new_link", fromNeuron.id, neuronID)
+    local linkToInnovation = innovationList:getID("new_link", neuronID, toNeuron.id)
+
+    neuron = NeuronGene(neuronID, "hidden", false, 0, new_x, new_y) --id, ntype, recurrent, response, x, y
+
+    linkFrom = LinkGene(linkFromInnovation, 0, fromNeuron.id, neuronID, true, false)-- innovation, weight, from, to, enabled, recurrent
+    linkTo = LinkGene(linkToInnovation, 0, neuronID, toNeuron.id, true, false)
+  end
+
+  neuron:alterResponse()
+  linkFrom:randomWeight()
+  linkTo:randomWeight()
+
+  self:pushNeuronGene(neuron)
+  self:pushLinkGene(linkFrom)
+  self:pushLinkGene(linkTo)
+
+  print("FINISHED ADD NODE MUTATION")
 end
 
 function Genome:mutatePerturbWeight(rates)
@@ -261,10 +369,44 @@ function Genome:alreadyHaveThisNeuronID(id)
   return false
 end
 
+function Genome:getNeuron(id)
+  for _, neuron in ipairs(self.NeuronGeneList) do
+    if neuron.id == id then
+      return neuron
+    end
+  end
+end
+
 function Genome:getRandomNeuron()
   local index = math.random(1, #self.NeuronGeneList)
 
   return self.NeuronGeneList[index]
+end
+
+function Genome:getRandomLink()
+  local index = math.random(1, #self.LinkGeneList)
+
+  return self.LinkGeneList[index]
+end
+
+function Genome:getRandomOldLink()
+  local index = math.random(1, #self.LinkGeneList-math.floor(math.sqrt(#self.LinkGeneList)))
+
+  return self.LinkGeneList[index]
+end
+
+function Genome:getBaseNeuronsAmount()
+  -- returns the number of input, bias and otput neurons in this genome
+  local count = 0
+  for _, neuron in ipairs(self.NeuronGeneList) do
+    if neuron.ntype == "input" or neuron.ntype == "bias" or neuron.ntype == "output" then
+      count = count + 1
+    else
+      break
+    end
+  end
+
+  return count
 end
 
 function Genome:pushNeuronGene(neuronGene)
@@ -310,7 +452,7 @@ setmetatable(NeuronGene, {
     o.id        = id
     o.ntype     = ntype
     o.recurrent = recurrent
-    o.response  = response or 1
+    o.response  = response or math.random()*20-10
     o.x         = x
     o.y         = y
 
@@ -387,7 +529,6 @@ setmetatable(Innovation, {
   __call = function(t, itype, from, to, neuronID, ntype)
     local o = {}
 
-    --o.id        = id
     o.itype     = itype
     o.from      = from
     o.to        = to
@@ -435,23 +576,29 @@ function InnovationList:getID(itype, from, to)
   return -1
 end
 
-function InnovationList:push(innovation)
-  --innovation.id = self:next()
-  table.insert(self, innovation)
-  return #self
+function InnovationList:getNeuronInnovationID(itype, from, to, neuronID)
+  for id, i in ipairs(self) do
+    if i.itype==itype and i.from==from and i.to==to and i.neuronID==neuronID then
+      return id
+    end
+  end
+
+  return -1
 end
 
-function InnovationList:get(i)
-  return self[i]
+function InnovationList:getNeuronID(itype, from, to)
+  local id = self:getID(itype, from, to)
+
+  if id > 0 then
+    return (self[id]).neuronID
+  end
+
+  return -1
 end
 
-function InnovationList:next()
-  return #self+1
-end
-
-function InnovationList:nextNeuronID()
+function InnovationList:newNeuronID()
   for n=#self, 1, -1 do
-    local innovation = self:get(n)
+    local innovation = self[n]
 
     if innovation.itype == "new_neuron" then
       return innovation.neuronID+1
@@ -459,6 +606,30 @@ function InnovationList:nextNeuronID()
   end
 
   return 1
+end
+
+function InnovationList:getNextNeuronID(id, itype, from, to)
+  local index = self:getNeuronID(id)
+  if index==-1 then return self:newNeuronID() end
+
+  for n=index, #self do
+    local i = self[n]
+
+    if i.itype==itype and i.from==from and i.to==to then
+      return (self[n]).neuronID
+    end
+  end
+
+  return self:newNeuronID()
+end
+
+function InnovationList:push(innovation)
+  table.insert(self, innovation)
+  return #self
+end
+
+function InnovationList:next()
+  return #self+1
 end
 
 --------------------------------
@@ -490,25 +661,25 @@ setmetatable(Population, {
       addLink           = 1,
       addLoopedLink     = 1,
       addRecurrentLink  = 1,
-      addNeuron         = 1,
+      addNode           = 1,
     }
 
     -- initialize innovations with inputs and outputs neurons
     for n=1,inputs do
-      local neuronID = o.innovationList:nextNeuronID()
+      local neuronID = o.innovationList:newNeuronID()
       local innovation = Innovation("new_neuron", -1, -1, neuronID, "input")
       o.innovationList:push(innovation)
     end
 
     -- bias neuron
     if not noBias then
-      local neuronID = o.innovationList:nextNeuronID()
+      local neuronID = o.innovationList:newNeuronID()
       local biasInnovation = Innovation("new_neuron", -1, -1, neuronID, "bias")
       o.innovationList:push(biasInnovation)
     end
 
     for n=1,outputs do
-      local neuronID = o.innovationList:nextNeuronID()
+      local neuronID = o.innovationList:newNeuronID()
       local innovation = Innovation("new_neuron", -1, -1, neuronID, "output")
       o.innovationList:push(innovation)
     end
@@ -566,9 +737,9 @@ end
 
 -- public
 size = 200
-inputs = 2
-outputs = 5
-noBias = true
+inputs = 3
+outputs = 2
+noBias = false
 
 population = LuaNEAT.newPopulation(size, inputs, outputs, noBias)
 --print(tostring(population.innovationList))
@@ -585,8 +756,8 @@ testRates = {
 
 
 genome = Genome.basicGenome(1, inputs, outputs, noBias)
---link = LinkGene(5, 0.141592653589, 1, 4, true, false)
-table.insert(genome.LinkGeneList, link)
+genome2 = Genome.basicGenome(2, inputs, outputs, noBias)
+
 --(t, innovation, weight, from, to, enabled, recurrent)
 
 
@@ -601,20 +772,22 @@ print("DONE PRINTING LINKS\n")
 
 genome:mutateAddLink(testRates, population.innovationList);print("\n")
 genome:mutateAddLink(testRates, population.innovationList);print("\n")
-genome:mutateAddLink(testRates, population.innovationList);print("\n")
-genome:mutateAddLink(testRates, population.innovationList)
 
-print("\n\nafter")
-for _,link in ipairs(genome.LinkGeneList) do
-  print(tostring(link).."\n")
-end
-print("DONE PRINTING LINKS\n")
+genome:mutateAddNode(testRates, population.innovationList);print("\n")
+genome:mutateAddNode(testRates, population.innovationList);print("\n")
+
 genome:mutatePerturbWeight(testRates)
 print("\n\nafter")
 for _,link in ipairs(genome.LinkGeneList) do
   print(tostring(link).."\n")
 end
 print("DONE PRINTING LINKS\n")
+
+print("\n\nNEURONS AFTER MUTATIONS")
+for _,neuron in ipairs(genome.NeuronGeneList) do
+  print(tostring(neuron).."\n")
+end
+print("DONE PRINTING NEURONS")
 
 
 
