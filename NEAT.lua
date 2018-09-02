@@ -302,8 +302,8 @@ function Genome:mutateAddNode(rates, innovationList)
 
     neuron = NeuronGene(neuronID, "hidden", false, 0, new_x, new_y) --id, ntype, recurrent, response, x, y
 
-    linkFrom = LinkGene(linkFromID, 0, fromNeuron.id, neuronID, true, false)-- innovation, weight, from, to, enabled, recurrent
-    linkTo = LinkGene(linkToID, 0, neuronID, toNeuron.id, true, false)
+    linkFrom = LinkGene(linkFromID, 1, fromNeuron.id, neuronID, true, false)-- innovation, weight, from, to, enabled, recurrent
+    linkTo = LinkGene(linkToID, weight, neuronID, toNeuron.id, true, false)
   else
     -- this innovation was already discovered
     print("innovation already discovered; will get IDs")
@@ -320,13 +320,11 @@ function Genome:mutateAddNode(rates, innovationList)
 
     neuron = NeuronGene(neuronID, "hidden", false, 0, new_x, new_y) --id, ntype, recurrent, response, x, y
 
-    linkFrom = LinkGene(linkFromInnovation, 0, fromNeuron.id, neuronID, true, false)-- innovation, weight, from, to, enabled, recurrent
-    linkTo = LinkGene(linkToInnovation, 0, neuronID, toNeuron.id, true, false)
+    linkFrom = LinkGene(linkFromInnovation, 1, fromNeuron.id, neuronID, true, false)-- innovation, weight, from, to, enabled, recurrent
+    linkTo = LinkGene(linkToInnovation, weight, neuronID, toNeuron.id, true, false)
   end
 
   neuron:alterResponse()
-  linkFrom:randomWeight()
-  linkTo:randomWeight()
 
   self:pushNeuronGene(neuron)
   self:pushLinkGene(linkFrom)
