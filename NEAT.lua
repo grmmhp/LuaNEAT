@@ -47,6 +47,7 @@ local function sigmoid(x, p)
 end
 
 -- TODO:
+-- improve Genome:drawNeuralNetwork()
 -- code Genome:buildNeuralNetwork()
 -- code Genome:mutate()
 -- test mutate alter response
@@ -142,6 +143,45 @@ end
 function Genome:buildNeuralNetwork()
 end
 
+function Genome:drawNeuralNetwork(width, height, sx, sy)
+  local radius = 10
+
+  local function transform(px, py, w, h)
+    return px*width+sx, py*height+sy
+  end
+
+  for _, link in ipairs(self.LinkGeneList) do
+    if link.enabled then
+      local neuron1 = self:getNeuron(link.from)
+      local neuron2 = self:getNeuron(link.to)
+
+      local x1, y1 = transform(neuron1.x, neuron1.y, width, height)
+      local x2, y2 = transform(neuron2.x, neuron2.y, width, height)
+
+      love.graphics.setColor(1, 1, 1, 1)
+      if neuron1.id == neuron2.id then -- link is looped
+        love.graphics.circle("line", x1+radius/2, y2-radius/2, radius)
+      else
+        love.graphics.line(x1, y1, x2, y2)
+      end
+    end
+  end
+
+  for _, neuron in ipairs(self.NeuronGeneList) do
+    local x, y = transform(neuron.x, neuron.y, width, height)
+
+    if neuron.ntype ~= "bias" then
+      love.graphics.setColor(1, 0, 0, 1)
+    else
+      love.graphics.setColor(0, 1, 0, 1)
+    end
+
+    love.graphics.circle("fill", x, y, radius)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print(neuron.id, x-radius/2, y-radius/2)
+  end
+end
+
 function Genome:mutate(rates, innovationList)
   -- mutations in this implementation:
 
@@ -154,7 +194,7 @@ end
 function Genome:mutateAddLink(rates, innovationList)
   -- adds a forward, recurrent or looped link
 
-  print("Initiating link mutation\nGenome ID is ".. self.id .."\n")
+  print("INITIATING LINK MUTATION\nGenome ID is ".. self.id .."\n")
 
   local findLinkAttempts = 20
 
@@ -235,6 +275,8 @@ function Genome:mutateAddNode(rates, innovationList)
   local sizeThreshold = self:getBaseNeuronsAmount()+5
   local findLinkAttempts = 20
 
+  if #self.LinkGeneList == 0 then print("GENOME HAS NO LINKS"); return end
+
   if #self.LinkGeneList < sizeThreshold then
     -- genome is too small; will choose an old link
     print("genome is too small; will choose older links")
@@ -300,7 +342,7 @@ function Genome:mutateAddNode(rates, innovationList)
     local linkFromID = innovationList:push(linkFromInnovation)
     local linkToID = innovationList:push(linkToInnovation)
 
-    neuron = NeuronGene(neuronID, "hidden", false, 0, new_x, new_y) --id, ntype, recurrent, response, x, y
+    neuron = NeuronGene(neuronID, "hidden", false, 1, new_x, new_y) --id, ntype, recurrent, response, x, y
 
     linkFrom = LinkGene(linkFromID, 1, fromNeuron.id, neuronID, true, false)-- innovation, weight, from, to, enabled, recurrent
     linkTo = LinkGene(linkToID, weight, neuronID, toNeuron.id, true, false)
@@ -318,13 +360,14 @@ function Genome:mutateAddNode(rates, innovationList)
     local linkFromInnovation = innovationList:getID("new_link", fromNeuron.id, neuronID)
     local linkToInnovation = innovationList:getID("new_link", neuronID, toNeuron.id)
 
-    neuron = NeuronGene(neuronID, "hidden", false, 0, new_x, new_y) --id, ntype, recurrent, response, x, y
+    neuron = NeuronGene(neuronID, "hidden", false, 1, new_x, new_y) --id, ntype, recurrent, response, x, y
 
     linkFrom = LinkGene(linkFromInnovation, 1, fromNeuron.id, neuronID, true, false)-- innovation, weight, from, to, enabled, recurrent
     linkTo = LinkGene(linkToInnovation, weight, neuronID, toNeuron.id, true, false)
   end
 
-  neuron:alterResponse()
+  print(linkFrom.innovation ..", ".. linkFrom.weight)
+  print(linkTo.innovation ..", ".. linkTo.weight)
 
   self:pushNeuronGene(neuron)
   self:pushLinkGene(linkFrom)
@@ -735,9 +778,9 @@ end
 
 -- public
 size = 200
-inputs = 3
-outputs = 2
-noBias = false
+inputs = 2
+outputs = 1
+noBias = true
 
 population = LuaNEAT.newPopulation(size, inputs, outputs, noBias)
 --print(tostring(population.innovationList))
@@ -768,21 +811,31 @@ for _,link in ipairs(genome.LinkGeneList) do
 end
 print("DONE PRINTING LINKS\n")
 
-genome:mutateAddLink(testRates, population.innovationList);print("\n")
+--[[genome:mutateAddLink(testRates, population.innovationList);print("\n")
 genome:mutateAddLink(testRates, population.innovationList);print("\n")
 
 genome:mutateAddNode(testRates, population.innovationList);print("\n")
-genome:mutateAddNode(testRates, population.innovationList);print("\n")
+genome:mutateAddNode(testRates, population.innovationList);print("\n")]]
 
-genome:mutatePerturbWeight(testRates)
+for n=1, 3 do
+  --if math.random() < .7 then
+    genome:mutateAddLink(testRates, population.innovationList);print("\n")
+  --end
+
+  if math.random() < .3 then
+    genome:mutateAddNode(testRates, population.innovationList);print("\n")
+  end
+end
+
+
 print("\n\nafter")
-for _,link in ipairs(genome.LinkGeneList) do
+for _, link in ipairs(genome.LinkGeneList) do
   print(tostring(link).."\n")
 end
 print("DONE PRINTING LINKS\n")
 
 print("\n\nNEURONS AFTER MUTATIONS")
-for _,neuron in ipairs(genome.NeuronGeneList) do
+for _, neuron in ipairs(genome.NeuronGeneList) do
   print(tostring(neuron).."\n")
 end
 print("DONE PRINTING NEURONS")
