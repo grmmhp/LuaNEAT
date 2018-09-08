@@ -1,3 +1,46 @@
+local LuaNEAT = {
+  _VERSION = "LuaNEAT Alpha Development",
+  _DESCRIPTION = "NEAT module for Lua",
+  _URL = "https://github.com/grmmhp/LuaNEAT",
+  _LICENSE = [[
+    MIT License
+
+    Copyright (c) 2018 Gabriel Mesquita
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+  ]]
+}
+
+-- TODO:
+-- improve Genome:drawNeuralNetwork()
+-- code Genome:buildNeuralNetwork()
+-- code Genome:mutate()
+-- code Genome:countDisjointExcessGenes()
+-- expand usage of binary insert
+-- test mutate alter response
+-- user needs to set random seed for LuaNEAT to work
+-- remove randomseed, math.random and oldrandom
+
+-------------------------------------------------------------------------------------------------
+-- These functions are used for testing and debugging and will be removed on the first release --
+-------------------------------------------------------------------------------------------------
+
 math.randomseed(os.time())
 
 -- prints only when DEBUG is true
@@ -33,26 +76,17 @@ math.random = function(_min, _max)
   return out
 end
 
-
 ------------
 -- MODULE --
 ------------
 
-
-local LuaNEAT = {}
+-- forward declaration of classes
+local Genome, NeuronGene, LinkGene, Innovation, InnovationList, Population
 
 local function sigmoid(x, p)
   local e = 2.71828182846
   return 1/(1+e^(-x*p))
 end
-
--- TODO:
--- improve Genome:drawNeuralNetwork()
--- code Genome:buildNeuralNetwork()
--- code Genome:mutate()
--- test mutate alter response
--- user needs to set random seed for LuaNEAT to work
--- remove randomseed, math.random and oldrandom
 
 -- rates prototype:
 local ratesPrototype = {
@@ -64,9 +98,6 @@ local ratesPrototype = {
   alterResponse = .1,
   maxResponse = .1,
 }
-
--- forward declaration of classes
-local NeuronGene, LinkGene, Genome, Innovation, InnovationList, Population
 
 --------------------------------
 --           GENOME           --
@@ -90,6 +121,7 @@ setmetatable(Genome, {
 
     o.id = id
     o.species = "none"
+    o.fitness = 0
     o.NeuronGeneList = NeuronGeneList
     o.LinkGeneList = LinkGeneList
 
@@ -151,19 +183,22 @@ function Genome:drawNeuralNetwork(width, height, sx, sy)
   end
 
   for _, link in ipairs(self.LinkGeneList) do
+    local neuron1 = self:getNeuron(link.from)
+    local neuron2 = self:getNeuron(link.to)
+
+    local x1, y1 = transform(neuron1.x, neuron1.y, width, height)
+    local x2, y2 = transform(neuron2.x, neuron2.y, width, height)
+
     if link.enabled then
-      local neuron1 = self:getNeuron(link.from)
-      local neuron2 = self:getNeuron(link.to)
-
-      local x1, y1 = transform(neuron1.x, neuron1.y, width, height)
-      local x2, y2 = transform(neuron2.x, neuron2.y, width, height)
-
       love.graphics.setColor(1, 1, 1, 1)
-      if neuron1.id == neuron2.id then -- link is looped
-        love.graphics.circle("line", x1+radius/2, y2-radius/2, radius)
-      else
-        love.graphics.line(x1, y1, x2, y2)
-      end
+    else
+      love.graphics.setColor(.25, .25, .25, 1)
+    end
+
+    if neuron1.id == neuron2.id then -- link is looped
+      love.graphics.circle("line", x1+radius/2, y2-radius/2, radius)
+    else
+      love.graphics.line(x1, y1, x2, y2)
     end
   end
 
@@ -180,6 +215,101 @@ function Genome:drawNeuralNetwork(width, height, sx, sy)
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print(neuron.id, x-radius/2, y-radius/2)
   end
+end
+
+function Genome.crossover(genome1, genome2)
+  -- genome1 is always the more fit genome
+  -- "In composing the offspring, genes are randomly chosen from either parent at matching genes,
+  -- whereas all excess or disjoint genes are always included from the more fit parent"
+  local offspring
+  local neuronGeneList = {}
+  local linkGeneList = {}
+
+  local function binaryInsert(neuron)
+    if #neuronGeneList == 0 then return
+      table.insert(neuronGeneList, neuron)
+    end
+
+    local lower, upper = 1, #neuronGeneList
+    local index=0
+
+    while lower <= upper do
+      index = math.floor((lower+upper)/2)
+
+      if neuronGeneList[index].id == neuron.id then
+        -- neuron is already on the list
+        return
+      elseif neuronGeneList[index].id > neuron.id then
+        upper = index-1
+      elseif neuronGeneList[index].id < neuron.id then
+        lower = index+1
+      end
+    end
+
+    if neuronGeneList[index].id < neuron.id then
+      table.insert(neuronGeneList, index+1, neuron)
+    else
+      table.insert(neuronGeneList, index, neuron)
+    end
+  end
+
+  print("INITIAZING CROSSOVER\nGenome IDs are ".. genome1.id .. " and ".. genome2.id)
+
+  if genome2.fitness > genome1.fitness then
+    -- swap the genomes
+    genome1, genome2 = genome2, genome1
+  elseif genome1.fitness == genome2.fitness then
+    -- equal fitness, choose one at random
+    if math.random() < .5 then
+      genome1, genome2 = genome2, genome1
+    end
+  end
+
+  -- gets the inputs, outputs and bias neurons from the genomes
+  for _, neuron in ipairs(genome1.NeuronGeneList) do
+    if (neuron.ntype == "input") or (neuron.ntype == "output") or (neuron.ntype == "bias") then
+      table.insert(neuronGeneList, neuron:copy())
+    else
+      break
+    end
+  end
+
+  for i, gene in ipairs(genome1.LinkGeneList) do
+    local neuronFrom
+    local neuronTo
+
+    if genome2:linkGeneExists(gene) then
+      -- this is a matching gene
+      -- we'll select one at random
+
+      if math.random() < .5 then
+        table.insert(linkGeneList, (genome2:getLink(gene.innovation)):copy())
+
+        neuronFrom = genome2:getNeuron((genome2:getLink(gene.innovation)).from)
+        neuronTo = genome2:getNeuron((genome2:getLink(gene.innovation)).to)
+      else
+        table.insert(linkGeneList, gene:copy())
+
+        neuronFrom = genome1:getNeuron(gene.from)
+        neuronTo = genome1:getNeuron(gene.to)
+      end
+    else
+      -- this is a disjoint or excess gene
+      table.insert(linkGeneList, gene:copy())
+
+      neuronFrom = genome1:getNeuron(gene.from)
+      neuronTo = genome1:getNeuron(gene.to)
+    end
+
+    binaryInsert(neuronFrom:copy())
+    binaryInsert(neuronTo:copy())
+  end
+
+  offspring = Genome(-1, neuronGeneList, linkGeneList)
+
+  print("FINISHED CROSSOVER")
+
+  return offspring
 end
 
 function Genome:mutate(rates, innovationList)
@@ -418,6 +548,14 @@ function Genome:getNeuron(id)
   end
 end
 
+function Genome:getLink(innovation)
+  for _, link in ipairs(self.LinkGeneList) do
+    if link.innovation == innovation then
+      return link
+    end
+  end
+end
+
 function Genome:getRandomNeuron()
   local index = math.random(1, #self.NeuronGeneList)
 
@@ -468,6 +606,24 @@ function Genome:linkExists(neuron1, neuron2)
   return false
 end
 
+function Genome:linkGeneExists(link)
+  for _, gene in ipairs(self.LinkGeneList) do
+    if gene.innovation == link.innovation then
+      return true
+    end
+  end
+
+  return false
+end
+
+function Genome:countDisjointExcessGenes(genome1, genome2)
+  -- still to code; will be used in speciation
+end
+
+function Genome:getFitness()
+  return self.fitness
+end
+
 --------------------------------
 --          GENES             --
 --------------------------------
@@ -505,7 +661,7 @@ setmetatable(NeuronGene, {
 })
 
 function NeuronGene:copy()
-  return NeuronGene(self.id, self.ntype, self.recurrent)
+  return NeuronGene(self.id, self.ntype, self.recurrent, self.response, self.x, self.y)
 end
 
 function NeuronGene:alterResponse()
@@ -697,6 +853,7 @@ setmetatable(Population, {
     o.outputs = outputs
     o.noBias = noBias or false
     o.genomes = {}
+    o.genomeIdCounter = 0
     o.innovationList = InnovationList()
     o.mutationChances = {
       addLink           = 1,
@@ -728,6 +885,12 @@ setmetatable(Population, {
     return setmetatable(o, Population.mt)
   end
 })
+
+function Population:getNextGenomeID()
+  self.genomeIdCounter = self.genomeIdCounter + 1
+
+  return self.genomeIdCounter
+end
 
 --------------------------------
 --      PUBLIC FUNCTIONS      --
@@ -778,7 +941,7 @@ end
 
 -- public
 size = 200
-inputs = 2
+inputs = 3
 outputs = 1
 noBias = true
 
@@ -799,46 +962,59 @@ testRates = {
 genome = Genome.basicGenome(1, inputs, outputs, noBias)
 genome2 = Genome.basicGenome(2, inputs, outputs, noBias)
 
---(t, innovation, weight, from, to, enabled, recurrent)
+genome.fitness = 50
+genome2.fitness = 10
 
-
-for _,neuron in ipairs(genome.NeuronGeneList) do
-  print(tostring(neuron).."\n")
-end
-print("\n\nbefore")
-for _,link in ipairs(genome.LinkGeneList) do
-  print(tostring(link).."\n")
-end
-print("DONE PRINTING LINKS\n")
-
---[[genome:mutateAddLink(testRates, population.innovationList);print("\n")
-genome:mutateAddLink(testRates, population.innovationList);print("\n")
-
-genome:mutateAddNode(testRates, population.innovationList);print("\n")
-genome:mutateAddNode(testRates, population.innovationList);print("\n")]]
-
-for n=1, 3 do
-  --if math.random() < .7 then
+num_mutate=10
+for n=1, num_mutate do
+  if math.random() < .4 then
     genome:mutateAddLink(testRates, population.innovationList);print("\n")
-  --end
+  end
 
   if math.random() < .3 then
     genome:mutateAddNode(testRates, population.innovationList);print("\n")
   end
 end
+for n=1, num_mutate do
+  if math.random() < .4 then
+    genome2:mutateAddLink(testRates, population.innovationList);print("\n")
+  end
 
-
-print("\n\nafter")
-for _, link in ipairs(genome.LinkGeneList) do
-  print(tostring(link).."\n")
+  if math.random() < .3 then
+    genome2:mutateAddNode(testRates, population.innovationList);print("\n")
+  end
 end
-print("DONE PRINTING LINKS\n")
 
-print("\n\nNEURONS AFTER MUTATIONS")
+offspring = Genome.crossover(genome2, genome)
+
+print("GENOME\n")
 for _, neuron in ipairs(genome.NeuronGeneList) do
-  print(tostring(neuron).."\n")
+  io.write(neuron.id .. " ")
 end
-print("DONE PRINTING NEURONS")
+for _, link in ipairs(genome.LinkGeneList) do
+  --print(tostring(link))
+  --print("\n")
+end
+
+print("\n\n\nGENOME2\n")
+
+for _, neuron in ipairs(genome2.NeuronGeneList) do
+  io.write(neuron.id .. " ")
+end
+for _, link in ipairs(genome2.LinkGeneList) do
+  --print(tostring(link))
+  --print("\n")
+end
+
+print("\n\n\nOFFSPRING\n")
+
+for _, neuron in ipairs(offspring.NeuronGeneList) do
+  io.write(neuron.id .. " ")
+end
+for _, link in ipairs(offspring.LinkGeneList) do
+  --print(tostring(link))
+  --print("\n")
+end
 
 
 
