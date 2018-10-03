@@ -1,6 +1,6 @@
 NEAT = require"NEAT"
 
-
+print(NEAT._VERSION)
 
 function love.load()
 end

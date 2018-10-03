@@ -31,11 +31,12 @@ local LuaNEAT = {
 -- improve Genome:drawNeuralNetwork()
 -- code Genome:buildNeuralNetwork()
 -- code Genome:mutate()
--- code Genome:countDisjointExcessGenes()
--- expand usage of binary insert
+-- code speciation
+-- code Species:adjustFitnesses()
+-- implement binary insert throughout the code
 -- test mutate alter response
--- user needs to set random seed for LuaNEAT to work
--- remove randomseed, math.random and oldrandom
+-- check if Species:calculateCompatibilityDistance() is computing correctly
+-- remove randomseed, math.random and oldrandom at the end of development
 
 -------------------------------------------------------------------------------------------------
 -- These functions are used for testing and debugging and will be removed on the first release --
@@ -81,15 +82,22 @@ end
 ------------
 
 -- forward declaration of classes
-local Genome, NeuronGene, LinkGene, Innovation, InnovationList, Population
+local Genome, NeuronGene, LinkGene, Innovation, InnovationList, Species, Population
 
 local function sigmoid(x, p)
   local e = 2.71828182846
   return 1/(1+e^(-x*p))
 end
 
--- rates prototype:
-local ratesPrototype = {
+local parameters = {
+  excessGenesCoefficient = 1,
+  disjointGenesCoefficient = 1,
+  matchingGenesCoefficient = .4,
+  sameSpeciesThreshold = 3,
+}
+
+-- mutation rates:
+local mutationRates = {
   loopedLink = .1,
   perturbWeight = .1,
   maxPerturbation = .1,
@@ -616,10 +624,6 @@ function Genome:linkGeneExists(link)
   return false
 end
 
-function Genome:countDisjointExcessGenes(genome1, genome2)
-  -- still to code; will be used in speciation
-end
-
 function Genome:getFitness()
   return self.fitness
 end
@@ -830,6 +834,80 @@ function InnovationList:next()
 end
 
 --------------------------------
+--           SPECIES          --
+--------------------------------
+
+Species = {}
+Species.mt = {__index = Species}
+
+setmetatable(Species, {
+__call = function(t, id)
+  local o = {}
+
+  o.id = id
+  o.genomes = {}
+  o.leader = nil
+  o.bestFitnessSoFar = 0
+  o.averageFitness = 0
+  o.generationsNoImprovement = 0
+  o.age = 0
+  o.spawnAmount = 0
+
+  return setmetatable(o, Species.mt)
+end})
+
+function Species.calculateCompatibilityDistance(genome1, genome2, excessGenesCoefficient, disjointGenesCoefficient, matchingGenesCoefficient)
+  excessGenesCoefficient = excessGenesCoefficient or parameters.excessGenesCoefficient
+  disjointGenesCoefficient = disjointGenesCoefficient or parameters.disjointGenesCoefficient
+  matchingGenesCoefficient = matchingGenesCoefficient or parameters.matchingGenesCoefficient
+
+  if #genome2.LinkGeneList > #genome1.LinkGeneList then
+    genome1, genome2 = genome2, genome1
+  end
+
+  local matching = 0
+  local disjoint = 0
+  local excess = 0
+  local weightDiff = 0
+
+  print(genome1.id ..", "..#genome1.LinkGeneList)
+  print(genome2.id ..", "..#genome2.LinkGeneList)
+
+  for i, link in ipairs(genome1.LinkGeneList) do
+    if genome2:linkGeneExists(link) then
+      -- this is a matching gene
+      local link2 = genome2:getLink(link.innovation)
+
+      matching = matching + 1
+      weightDiff = weightDiff + math.abs((link.weight-link2.weight))
+    else
+      if i > #genome2.LinkGeneList then
+        -- out of bounds of genome2, this is an excess gene
+        excess = excess + 1
+      else
+        disjoint = disjoint + 1
+      end
+    end
+  end
+
+ print("excess ".. excess)
+ print("disjoint ".. disjoint)
+ print("weight diff ".. weightDiff)
+ print("matching ".. matching)
+
+
+  local n = #genome1.LinkGeneList
+  print("test output: ".. excessGenesCoefficient*excess/n + disjointGenesCoefficient*disjoint/n + matchingGenesCoefficient*weightDiff/matching)
+
+  return   excessGenesCoefficient*excess/n
+         + disjointGenesCoefficient*disjoint/n
+         + matchingGenesCoefficient*weightDiff/matching;
+end
+
+function Species:adjustFitnesses()
+end
+
+--------------------------------
 --         POPULATION         --
 --------------------------------
 
@@ -853,6 +931,7 @@ setmetatable(Population, {
     o.outputs = outputs
     o.noBias = noBias or false
     o.genomes = {}
+    o.species = {}
     o.genomeIdCounter = 0
     o.innovationList = InnovationList()
     o.mutationChances = {
@@ -989,32 +1068,38 @@ offspring = Genome.crossover(genome2, genome)
 
 print("GENOME\n")
 for _, neuron in ipairs(genome.NeuronGeneList) do
-  io.write(neuron.id .. " ")
+  --io.write(neuron.id .. " ")
 end
 for _, link in ipairs(genome.LinkGeneList) do
   --print(tostring(link))
   --print("\n")
+  print(link.innovation)
 end
+print("Genome 1 has a total of ".. #genome.LinkGeneList)
 
 print("\n\n\nGENOME2\n")
 
 for _, neuron in ipairs(genome2.NeuronGeneList) do
-  io.write(neuron.id .. " ")
+  --io.write(neuron.id .. " ")
 end
 for _, link in ipairs(genome2.LinkGeneList) do
+  print(link.innovation)
   --print(tostring(link))
   --print("\n")
 end
+print("Genome 2 has a total of ".. #genome2.LinkGeneList)
 
-print("\n\n\nOFFSPRING\n")
+--print("\n\n\nOFFSPRING\n")
 
 for _, neuron in ipairs(offspring.NeuronGeneList) do
-  io.write(neuron.id .. " ")
+  --io.write(neuron.id .. " ")
 end
 for _, link in ipairs(offspring.LinkGeneList) do
   --print(tostring(link))
   --print("\n")
 end
+
+print(Species.calculateCompatibilityDistance(genome, genome2))
 
 
 
