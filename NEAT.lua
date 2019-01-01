@@ -44,8 +44,8 @@ local LuaNEAT = {
 
 math.randomseed(os.time())
 
--- prints only when DEBUG is true
-local DEBUG = true
+-- debugging
+local DEBUG = false
 
 local oldprint = print
 local print = function(str)
@@ -394,7 +394,7 @@ function Genome:mutateAddLink(rates, innovationList)
     local innovation = Innovation("new_link", neuron1.id, neuron2.id, -1, "none")
     -- id, itype, from, to, neuronID, ntype
     innovationID = innovationList:push(innovation)
-  else
+  --else
     -- innovation was already discovered
   end
 
@@ -539,8 +539,17 @@ function Genome:mutatePerturbResponse(rates)
 end
 
 function Genome:alreadyHaveThisNeuronID(id)
-  for _, neuron in ipairs(self.NeuronGeneList) do
-    if neuron.id == id then
+  local lower, upper = 1, #self.NeuronGeneList
+  local index
+
+  while lower <= upper do
+    index = math.floor((lower+upper)/2)
+
+    if self.NeuronGeneList[index].id > id then
+      upper = index-1
+    elseif self.NeuronGeneList[index].id < id then
+      lower = index+1
+    else
       return true
     end
   end
@@ -549,17 +558,35 @@ function Genome:alreadyHaveThisNeuronID(id)
 end
 
 function Genome:getNeuron(id)
-  for _, neuron in ipairs(self.NeuronGeneList) do
-    if neuron.id == id then
-      return neuron
+  local lower, upper = 1, #self.NeuronGeneList
+  local index
+
+  while lower <= upper do
+    index = math.floor((lower+upper)/2)
+
+    if self.NeuronGeneList[index].id > id then
+      upper = index-1
+    elseif self.NeuronGeneList[index].id < id then
+      lower = index+1
+    else
+      return self.NeuronGeneList[index]
     end
   end
 end
 
 function Genome:getLink(innovation)
-  for _, link in ipairs(self.LinkGeneList) do
-    if link.innovation == innovation then
-      return link
+  local lower, upper = 1, #self.LinkGeneList
+  local index
+
+  while lower <= upper do
+    index = math.floor((lower+upper)/2)
+
+    if self.LinkGeneList[index].innovation > innovation then
+      upper = index-1
+    elseif self.LinkGeneList[index].innovation < innovation then
+      lower = index+1
+    else
+      return self.LinkGeneList[index]
     end
   end
 end
@@ -597,11 +624,59 @@ function Genome:getBaseNeuronsAmount()
 end
 
 function Genome:pushNeuronGene(neuronGene)
-  table.insert(self.NeuronGeneList, neuronGene)
+  if #self.NeuronGeneList == 0 then
+    table.insert(self.NeuronGeneList, neuronGene); return
+  end
+
+  local lower, upper = 1, #self.NeuronGeneList
+  local index=0
+
+  while lower <= upper do
+    index = math.floor((lower+upper)/2)
+
+    if self.NeuronGeneList[index].id == neuronGene.id then
+      -- neuron is already on the list
+      return
+    elseif self.NeuronGeneList[index].id > neuronGene.id then
+      upper = index-1
+    elseif self.NeuronGeneList[index].id < neuronGene.id then
+      lower = index+1
+    end
+  end
+
+  if self.NeuronGeneList[index].id < neuronGene.id then
+    table.insert(self.NeuronGeneList, index+1, neuronGene)
+  else
+    table.insert(self.NeuronGeneList, index, neuronGene)
+  end
 end
 
 function Genome:pushLinkGene(linkGene)
-  table.insert(self.LinkGeneList, linkGene)
+  if #self.LinkGeneList == 0 then
+    table.insert(self.LinkGeneList, linkGene); return
+  end
+
+  local lower, upper = 1, #self.LinkGeneList
+  local index=0
+
+  while lower <= upper do
+    index = math.floor((lower+upper)/2)
+
+    if self.LinkGeneList[index].innovation == linkGene.innovation then
+      -- neuron is already on the list
+      return
+    elseif self.LinkGeneList[index].innovation > linkGene.innovation then
+      upper = index-1
+    elseif self.LinkGeneList[index].innovation < linkGene.innovation then
+      lower = index+1
+    end
+  end
+
+  if self.LinkGeneList[index].innovation < linkGene.innovation then
+    table.insert(self.LinkGeneList, index+1, linkGene)
+  else
+    table.insert(self.LinkGeneList, index, linkGene)
+  end
 end
 
 function Genome:linkExists(neuron1, neuron2)
@@ -615,8 +690,17 @@ function Genome:linkExists(neuron1, neuron2)
 end
 
 function Genome:linkGeneExists(link)
-  for _, gene in ipairs(self.LinkGeneList) do
-    if gene.innovation == link.innovation then
+  local lower, upper = 1, #self.LinkGeneList
+  local index
+
+  while lower <= upper do
+    index = math.floor((lower+upper)/2)
+
+    if self.LinkGeneList[index].innovation > link.innovation then
+      upper = index-1
+    elseif self.LinkGeneList[index].innovation < link.innovation then
+      lower = index+1
+    else
       return true
     end
   end
@@ -1101,8 +1185,17 @@ end
 
 print(Species.calculateCompatibilityDistance(genome, genome2))
 
+for _, neuron in ipairs(offspring.NeuronGeneList) do
+  io.write(neuron.id .. ", ")
+end
 
+oldprint("\n\n")
 
+for _, link in ipairs(offspring.LinkGeneList) do
+  io.write(link.innovation .. ", ")
+end
+
+oldprint("\n\n")
 
 
 
