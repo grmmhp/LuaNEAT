@@ -28,6 +28,7 @@ local LuaNEAT = {
 }
 
 -- TODO:
+-- deal with NaN in calculateCompatibilityDistance() when there are no matching genes (but first check if this is a problem)
 -- improve Genome:drawNeuralNetwork()
 -- code Genome:buildNeuralNetwork()
 -- code Genome:mutate()
@@ -45,7 +46,7 @@ local LuaNEAT = {
 math.randomseed(os.time())
 
 -- debugging
-local DEBUG = false
+local DEBUG = true
 
 local oldprint = print
 local print = function(str)
@@ -261,8 +262,6 @@ function Genome.crossover(genome1, genome2)
     end
   end
 
-  print("INITIAZING CROSSOVER\nGenome IDs are ".. genome1.id .. " and ".. genome2.id)
-
   if genome2.fitness > genome1.fitness then
     -- swap the genomes
     genome1, genome2 = genome2, genome1
@@ -315,8 +314,6 @@ function Genome.crossover(genome1, genome2)
 
   offspring = Genome(-1, neuronGeneList, linkGeneList)
 
-  print("FINISHED CROSSOVER")
-
   return offspring
 end
 
@@ -331,9 +328,6 @@ end
 
 function Genome:mutateAddLink(rates, innovationList)
   -- adds a forward, recurrent or looped link
-
-  print("INITIATING LINK MUTATION\nGenome ID is ".. self.id .."\n")
-
   local findLinkAttempts = 20
 
   local neuron1
@@ -344,7 +338,6 @@ function Genome:mutateAddLink(rates, innovationList)
     -- tries to find a hidden or output neuron that does not already have a loopback
     -- looped link is going to be added
     for n=1, findLinkAttempts do
-      print("#".. n .. " ATTEMPT TO FIND LOOPED LINK")
       neuron1 = self:getRandomNeuron()
 
       if  (neuron1.ntype ~= "input")
@@ -355,21 +348,16 @@ function Genome:mutateAddLink(rates, innovationList)
 
         recurrent = true
 
-        print("neuron found: ".. neuron1.id)
-
         break
       end
     end
   else
     -- tries to find two unconnected neurons
     for n=1, findLinkAttempts do
-      print("#".. n .. " ATTEMPT TO FIND NORMAL LINK")
       neuron1 = self:getRandomNeuron()
       neuron2 = self:getRandomNeuron()
 
       if (not self:linkExists(neuron1, neuron2)) and (neuron1.id ~= neuron2.id) and (neuron2.ntype~="input") and (neuron2.ntype~="bias") then
-        print("neuron 1 found: ".. neuron1.id)
-        print("neuron 2 found: ".. neuron2.id)
         break
       else
         neuron1 = nil
@@ -379,7 +367,7 @@ function Genome:mutateAddLink(rates, innovationList)
   end
 
   -- could not find neurons
-  if neuron1==nil or neuron2==nil then print("COULD NOT FIND NEURONS"); return end
+  if neuron1==nil or neuron2==nil then return; end
 
   -- checking innovation
   local innovationID = innovationList:getID("new_link", neuron1.id, neuron2.id)
@@ -403,29 +391,23 @@ function Genome:mutateAddLink(rates, innovationList)
   linkGene:randomWeight()
 
   self:pushLinkGene(linkGene)
-
-  print("FINISHED MUTATING LINK")
 end
 
 function Genome:mutateAddNode(rates, innovationList)
-  print("INITIATING NODE MUTATION\nGenome ID is ".. self.id .. "\n")
   local link
   local sizeThreshold = self:getBaseNeuronsAmount()+5
   local findLinkAttempts = 20
 
-  if #self.LinkGeneList == 0 then print("GENOME HAS NO LINKS"); return end
+  if #self.LinkGeneList == 0 then return; end
 
   if #self.LinkGeneList < sizeThreshold then
     -- genome is too small; will choose an old link
-    print("genome is too small; will choose older links")
     for n=1, findLinkAttempts do
-      print("#".. n .. " attempt to find link")
       link = self:getRandomOldLink()
 
       local fromNeuron = self:getNeuron(link.from)
 
       if (link.enabled) and (not link.recurrent) and (fromNeuron.ntype~="bias") then
-        print("found link ".. link.innovation)
         break
       else
         link = nil
@@ -433,7 +415,6 @@ function Genome:mutateAddNode(rates, innovationList)
     end
   else
     -- genome is of sufficient size
-    print("genome is of sufficient size; will choose any link")
     while true do
       link = self:getRandomLink()
 
@@ -445,7 +426,7 @@ function Genome:mutateAddNode(rates, innovationList)
     end
   end
 
-  if link == nil then print("COULD NOT FIND LINK"); return end
+  if link == nil then return; end
 
   -- we will disable this link and create two others
   link.enabled = false
@@ -468,7 +449,6 @@ function Genome:mutateAddNode(rates, innovationList)
   if id == -1 then
     -- this is a new innovation
     -- itype, from, to, neuronID, ntype
-    print("new innovation found")
 
     local neuronID = innovationList:newNeuronID()
     local neuronInnovation = Innovation("new_neuron", fromNeuron.id, toNeuron.id, neuronID, "hidden")
@@ -486,8 +466,6 @@ function Genome:mutateAddNode(rates, innovationList)
     linkTo = LinkGene(linkToID, weight, neuronID, toNeuron.id, true, false)
   else
     -- this innovation was already discovered
-    print("innovation already discovered; will get IDs")
-
     local neuronID = innovationList:getNeuronID("new_neuron", fromNeuron.id, toNeuron.id)
 
     while self:alreadyHaveThisNeuronID(neuronID) do
@@ -504,14 +482,9 @@ function Genome:mutateAddNode(rates, innovationList)
     linkTo = LinkGene(linkToInnovation, weight, neuronID, toNeuron.id, true, false)
   end
 
-  print(linkFrom.innovation ..", ".. linkFrom.weight)
-  print(linkTo.innovation ..", ".. linkTo.weight)
-
   self:pushNeuronGene(neuron)
   self:pushLinkGene(linkFrom)
   self:pushLinkGene(linkTo)
-
-  print("FINISHED ADD NODE MUTATION")
 end
 
 function Genome:mutatePerturbWeight(rates)
@@ -621,6 +594,10 @@ function Genome:getBaseNeuronsAmount()
   end
 
   return count
+end
+
+function Genome:getMaxLinkInnovation()
+  return self.LinkGeneList[#self.LinkGeneList].innovation
 end
 
 function Genome:pushNeuronGene(neuronGene)
@@ -945,46 +922,51 @@ function Species.calculateCompatibilityDistance(genome1, genome2, excessGenesCoe
   disjointGenesCoefficient = disjointGenesCoefficient or parameters.disjointGenesCoefficient
   matchingGenesCoefficient = matchingGenesCoefficient or parameters.matchingGenesCoefficient
 
-  if #genome2.LinkGeneList > #genome1.LinkGeneList then
-    genome1, genome2 = genome2, genome1
-  end
+  local matching    = 0
+  local excess      = 0
+  local disjoint    = 0
+  local weightDiff  = 0
 
-  local matching = 0
-  local disjoint = 0
-  local excess = 0
-  local weightDiff = 0
+  local index1 = 1 -- genome 1 index
+  local index2 = 1 -- genome 2 index
 
-  print(genome1.id ..", "..#genome1.LinkGeneList)
-  print(genome2.id ..", "..#genome2.LinkGeneList)
+  while index1 <= #genome1.LinkGeneList and index2 <= #genome2.LinkGeneList do
+      local id1 = genome1.LinkGeneList[index1].innovation
+      local id2 = genome2.LinkGeneList[index2].innovation
 
-  for i, link in ipairs(genome1.LinkGeneList) do
-    if genome2:linkGeneExists(link) then
-      -- this is a matching gene
-      local link2 = genome2:getLink(link.innovation)
+      if id1 == id2 then
+        matching = matching + 1
+        weightDiff = math.abs(genome1.LinkGeneList[index1].weight - genome2.LinkGeneList[index2].weight)
 
-      matching = matching + 1
-      weightDiff = weightDiff + math.abs((link.weight-link2.weight))
-    else
-      if i > #genome2.LinkGeneList then
-        -- out of bounds of genome2, this is an excess gene
-        excess = excess + 1
-      else
+        index1 = index1 + 1
+        index2 = index2 + 1
+      elseif id1 < id2 then
         disjoint = disjoint + 1
+        index1 = index1 + 1
+      elseif id2 < id1 then
+        disjoint = disjoint + 1
+        index2 = index2 + 1
       end
-    end
   end
 
- print("excess ".. excess)
- print("disjoint ".. disjoint)
- print("weight diff ".. weightDiff)
- print("matching ".. matching)
+  if index1 <= #genome1.LinkGeneList then
+    excess = #genome1.LinkGeneList-index1 + 1
+  end
+
+  if index2 <= #genome2.LinkGeneList then
+    excess = #genome2.LinkGeneList-index2 + 1
+  end
+
+  print("excess ".. excess)
+  print("disjoint ".. disjoint)
+  print("weight diff ".. weightDiff)
+  print("matching ".. matching)
 
 
-  local n = #genome1.LinkGeneList
-  print("test output: ".. excessGenesCoefficient*excess/n + disjointGenesCoefficient*disjoint/n + matchingGenesCoefficient*weightDiff/matching)
+  local maxIndex = math.max(#genome1.LinkGeneList, #genome2.LinkGeneList)
 
-  return   excessGenesCoefficient*excess/n
-         + disjointGenesCoefficient*disjoint/n
+  return   excessGenesCoefficient*excess/maxIndex
+         + disjointGenesCoefficient*disjoint/maxIndex
          + matchingGenesCoefficient*weightDiff/matching;
 end
 
@@ -1131,71 +1113,41 @@ genome2.fitness = 10
 num_mutate=10
 for n=1, num_mutate do
   if math.random() < .4 then
-    genome:mutateAddLink(testRates, population.innovationList);print("\n")
+    genome:mutateAddLink(testRates, population.innovationList)
   end
 
   if math.random() < .3 then
-    genome:mutateAddNode(testRates, population.innovationList);print("\n")
+    genome:mutateAddNode(testRates, population.innovationList)
   end
 end
 for n=1, num_mutate do
   if math.random() < .4 then
-    genome2:mutateAddLink(testRates, population.innovationList);print("\n")
+    genome2:mutateAddLink(testRates, population.innovationList)
   end
 
   if math.random() < .3 then
-    genome2:mutateAddNode(testRates, population.innovationList);print("\n")
+    --genome2:mutateAddNode(testRates, population.innovationList)
   end
 end
 
 offspring = Genome.crossover(genome2, genome)
 
-print("GENOME\n")
-for _, neuron in ipairs(genome.NeuronGeneList) do
-  --io.write(neuron.id .. " ")
-end
+print("gen1:")
 for _, link in ipairs(genome.LinkGeneList) do
-  --print(tostring(link))
-  --print("\n")
-  print(link.innovation)
+  io.write(link.innovation ..", ")
 end
-print("Genome 1 has a total of ".. #genome.LinkGeneList)
-
-print("\n\n\nGENOME2\n")
-
-for _, neuron in ipairs(genome2.NeuronGeneList) do
-  --io.write(neuron.id .. " ")
-end
+print("\ngen2:")
 for _, link in ipairs(genome2.LinkGeneList) do
-  print(link.innovation)
-  --print(tostring(link))
-  --print("\n")
+  io.write(link.innovation ..", ")
 end
-print("Genome 2 has a total of ".. #genome2.LinkGeneList)
 
---print("\n\n\nOFFSPRING\n")
-
-for _, neuron in ipairs(offspring.NeuronGeneList) do
-  --io.write(neuron.id .. " ")
-end
-for _, link in ipairs(offspring.LinkGeneList) do
-  --print(tostring(link))
-  --print("\n")
-end
+print("\n\n_")
 
 print(Species.calculateCompatibilityDistance(genome, genome2))
 
-for _, neuron in ipairs(offspring.NeuronGeneList) do
-  io.write(neuron.id .. ", ")
-end
 
 oldprint("\n\n")
-
-for _, link in ipairs(offspring.LinkGeneList) do
-  io.write(link.innovation .. ", ")
-end
-
-oldprint("\n\n")
+print(genome2:getMaxLinkInnovation())
 
 
 
