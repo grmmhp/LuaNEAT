@@ -28,15 +28,12 @@ local LuaNEAT = {
 }
 
 -- TODO:
--- deal with NaN in calculateCompatibilityDistance() when there are no matching genes (but first check if this is a problem)
+-- get parameters on mutation functions
 -- improve Genome:drawNeuralNetwork()
 -- code Genome:buildNeuralNetwork()
 -- code Genome:mutate()
--- code speciation
--- code Species:adjustFitnesses()
--- implement binary insert throughout the code
+-- finish speciation and start epoch methods
 -- test mutate alter response
--- check if Species:calculateCompatibilityDistance() is computing correctly
 -- remove randomseed, math.random and oldrandom at the end of development
 
 -------------------------------------------------------------------------------------------------
@@ -83,29 +80,41 @@ end
 ------------
 
 -- forward declaration of classes
-local Genome, NeuronGene, LinkGene, Innovation, InnovationList, Species, Population
+local Genome, NeuronGene, LinkGene, Innovation, InnovationList, Species, Pool
 
 local function sigmoid(x, p)
   local e = 2.71828182846
   return 1/(1+e^(-x*p))
 end
 
-local parameters = {
-  excessGenesCoefficient = 1,
-  disjointGenesCoefficient = 1,
-  matchingGenesCoefficient = .4,
-  sameSpeciesThreshold = 3,
-}
+local DefaultParameters = {
+  excessGenesCoefficient   = 1,  ----------------------------------
+  disjointGenesCoefficient = 1,  ----------------------------------
+  matchingGenesCoefficient = .4, ----------------------------------
 
--- mutation rates:
-local mutationRates = {
-  loopedLink = .1,
-  perturbWeight = .1,
-  maxPerturbation = .1,
-  replaceWeight = .1,
-  perturbResponse = .1,
-  alterResponse = .1,
-  maxResponse = .1,
+  sameSpeciesThreshold     = .26,
+  generationsNoImprovement = 15,
+
+  youngAgeBonusThreshold = 10,
+  youngAgeFitnessBonus   = 1.3,
+  oldAgeThreshold        = 50,
+  oldAgePenalty          = .7,
+
+  -- mutations
+  addLink           = .07,
+  addNode           = .03,
+  addLoopedLink     = 1,
+  addRecurrentLink  = .05,
+
+  loopedLink      = .1, ------------------
+  perturbWeight   = .2,
+  maxPerturbation = .5,
+  replaceWeight   = .1,
+  perturbResponse = .1, ------------------
+  alterResponse   = .1, ------------------
+  maxResponse     = .1, ------------------
+
+  crossoverRate = .7,
 }
 
 --------------------------------
@@ -131,6 +140,7 @@ setmetatable(Genome, {
     o.id = id
     o.species = "none"
     o.fitness = 0
+    o.adjustedFitness = 0
     o.NeuronGeneList = NeuronGeneList
     o.LinkGeneList = LinkGeneList
 
@@ -326,7 +336,7 @@ function Genome:mutate(rates, innovationList)
   -- alter response curve
 end
 
-function Genome:mutateAddLink(rates, innovationList)
+function Genome:mutateAddLink(rates, innovationList, forceMutation)
   -- adds a forward, recurrent or looped link
   local findLinkAttempts = 20
 
@@ -596,10 +606,6 @@ function Genome:getBaseNeuronsAmount()
   return count
 end
 
-function Genome:getMaxLinkInnovation()
-  return self.LinkGeneList[#self.LinkGeneList].innovation
-end
-
 function Genome:pushNeuronGene(neuronGene)
   if #self.NeuronGeneList == 0 then
     table.insert(self.NeuronGeneList, neuronGene); return
@@ -683,6 +689,10 @@ function Genome:linkGeneExists(link)
   end
 
   return false
+end
+
+function Genome:setFitness(fitness)
+  self.fitness = fitness
 end
 
 function Genome:getFitness()
@@ -917,10 +927,11 @@ __call = function(t, id)
   return setmetatable(o, Species.mt)
 end})
 
-function Species.calculateCompatibilityDistance(genome1, genome2, excessGenesCoefficient, disjointGenesCoefficient, matchingGenesCoefficient)
-  excessGenesCoefficient = excessGenesCoefficient or parameters.excessGenesCoefficient
-  disjointGenesCoefficient = disjointGenesCoefficient or parameters.disjointGenesCoefficient
-  matchingGenesCoefficient = matchingGenesCoefficient or parameters.matchingGenesCoefficient
+function Species.calculateCompatibilityDistance(genome1, genome2, parameters)
+  local excessGenesCoefficient = parameters.excessGenesCoefficient
+  local disjointGenesCoefficient = parameters.disjointGenesCoefficient
+  local matchingGenesCoefficient = parameters.matchingGenesCoefficient
+  print("excess coefficient: ".. excessGenesCoefficient)
 
   local matching    = 0
   local excess      = 0
@@ -962,7 +973,6 @@ function Species.calculateCompatibilityDistance(genome1, genome2, excessGenesCoe
   print("weight diff ".. weightDiff)
   print("matching ".. matching)
 
-
   local maxIndex = math.max(#genome1.LinkGeneList, #genome2.LinkGeneList)
 
   return   excessGenesCoefficient*excess/maxIndex
@@ -970,16 +980,31 @@ function Species.calculateCompatibilityDistance(genome1, genome2, excessGenesCoe
          + matchingGenesCoefficient*weightDiff/matching;
 end
 
-function Species:adjustFitnesses()
+function Species:adjustFitnesses(parameters)
+  -- "this method boosts the fitnesses of the young, penalizes the
+  --  fitnesses of the old and then performs fitness sharing over
+  --  all the members of the species"
+
+  for _, genome in self.genomes do
+    if self.age < parameters.youngAgeBonusThreshold then
+      genome.fitness = (genome.fitness)*(parameters.youngAgeFitnessBonus)
+    end
+
+    if self.age > parameters.oldAgeThreshold then
+      genome.fitness = (genome.fitness)*(parameters.oldAgePenalty)
+    end
+
+    genome.adjustedFitness = (genome.fitness)/(#self.genomes)
+  end
 end
 
---------------------------------
---         POPULATION         --
---------------------------------
+------------------------
+--         POOL       --
+------------------------
 
-Population = {}
-Population.mt = {
-  __index = Population,
+Pool = {}
+Pool.mt = {
+  __index = Pool,
 
   __tostring = function(self)
     return    "Number of genomes:\t" .. #self.genomes
@@ -988,7 +1013,7 @@ Population.mt = {
   end,
 }
 
-setmetatable(Population, {
+setmetatable(Pool, {
   __call = function(t, size, inputs, outputs, noBias)
     local o = {}
 
@@ -1000,14 +1025,13 @@ setmetatable(Population, {
     o.species = {}
     o.genomeIdCounter = 0
     o.innovationList = InnovationList()
-    o.mutationChances = {
-      addLink           = 1,
-      addLoopedLink     = 1,
-      addRecurrentLink  = 1,
-      addNode           = 1,
-    }
+    o.parameters = {}
 
-    -- initialize innovations with inputs and outputs neurons
+    for k, v in pairs(DefaultParameters) do
+      o.parameters[k] = v
+    end
+
+    -- initialize pool with inputs, bias and outputs neuron innovations
     for n=1,inputs do
       local neuronID = o.innovationList:newNeuronID()
       local innovation = Innovation("new_neuron", -1, -1, neuronID, "input")
@@ -1027,21 +1051,24 @@ setmetatable(Population, {
       o.innovationList:push(innovation)
     end
 
-    return setmetatable(o, Population.mt)
+    return setmetatable(o, Pool.mt)
   end
 })
 
-function Population:getNextGenomeID()
+function Pool:getNextGenomeID()
   self.genomeIdCounter = self.genomeIdCounter + 1
 
   return self.genomeIdCounter
+end
+
+function Pool:epoch()
 end
 
 --------------------------------
 --      PUBLIC FUNCTIONS      --
 --------------------------------
 
-function LuaNEAT.newPopulation(size, inputs, outputs, noBias)
+function LuaNEAT.newPool(size, inputs, outputs, noBias)
   -- error handling: size, inputs and outputs needs to be integers and be greater than 0
 
   -- handling size
@@ -1077,7 +1104,7 @@ function LuaNEAT.newPopulation(size, inputs, outputs, noBias)
     error("outputs needs to be a whole number", 2)
   end
 
-  return Population(size, inputs, outputs, noBias)
+  return Pool(size, inputs, outputs, noBias)
 end
 
 
@@ -1090,8 +1117,8 @@ inputs = 3
 outputs = 1
 noBias = true
 
-population = LuaNEAT.newPopulation(size, inputs, outputs, noBias)
---print(tostring(population.innovationList))
+pool = LuaNEAT.newPool(size, inputs, outputs, noBias)
+--print(tostring(pool.innovationList))
 
 testRates = {
   loopedLink = .1,
@@ -1103,30 +1130,29 @@ testRates = {
   maxResponse = .1,
 }
 
-
 genome = Genome.basicGenome(1, inputs, outputs, noBias)
 genome2 = Genome.basicGenome(2, inputs, outputs, noBias)
 
 genome.fitness = 50
 genome2.fitness = 10
 
-num_mutate=10
+num_mutate=2^4
 for n=1, num_mutate do
   if math.random() < .4 then
-    genome:mutateAddLink(testRates, population.innovationList)
+    genome:mutateAddLink(testRates, pool.innovationList)
   end
 
   if math.random() < .3 then
-    genome:mutateAddNode(testRates, population.innovationList)
+    genome:mutateAddNode(testRates, pool.innovationList)
   end
 end
 for n=1, num_mutate do
   if math.random() < .4 then
-    genome2:mutateAddLink(testRates, population.innovationList)
+    genome2:mutateAddLink(testRates, pool.innovationList)
   end
 
   if math.random() < .3 then
-    --genome2:mutateAddNode(testRates, population.innovationList)
+    genome2:mutateAddNode(testRates, pool.innovationList)
   end
 end
 
@@ -1143,11 +1169,16 @@ end
 
 print("\n\n_")
 
-print(Species.calculateCompatibilityDistance(genome, genome2))
-
+distance = Species.calculateCompatibilityDistance(genome, genome2, DefaultParameters)
+print(distance)
+if distance <= DefaultParameters.sameSpeciesThreshold then
+  print("Genome 1 and 2 are on the same species")
+else
+  print("Genome 1 and 2 are *NOT* on the same species")
+end
 
 oldprint("\n\n")
-print(genome2:getMaxLinkInnovation())
+print(pool.parameters.oldAgeThreshold)
 
 
 
