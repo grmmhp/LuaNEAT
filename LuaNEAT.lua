@@ -125,7 +125,7 @@ setmetatable(Genome, {
   __call = function(t, id, neuron_list, link_list)
     local o = {}
 
-    o.id = id
+    o.id = id or -1
     o.species = -1
     o.fitness = 0
     o.adjustedFitness = 0
@@ -186,6 +186,70 @@ function Genome.minimal(id, inputs, outputs, parameters, noBias)
   if not noBias then genome.bias = 1 end
 
   return genome
+end
+
+function Genome.crossover(genome1, genome2)
+  local offspring = Genome()
+
+  -- make sure genome1 is always the fittest
+  -- if they are of equal fitness, choose genome1
+  -- as the shorter genome. if both genomes have
+  -- same length, just choose genome1 at random.
+
+  if genome2.fitness > genome1.fitness then
+    genome1, genome2 = genome2, genome1
+  elseif genome2.fitness == genome1.fitness then
+    if #genome1.link_list == #genome2.link_list then
+      if LuaNEAT.random() < .5 then
+        genome1, genome2 = genome2, genome1
+      end
+    elseif #genome2.link_list < #genome1.link_list then
+      genome1, genome2 = genome2, genome1
+    end
+  end
+
+  print("last innovations:")
+  print(genome1.link_list[#genome1.link_list].innovation)
+  print(genome2.link_list[#genome2.link_list].innovation)
+
+  -- get the neuron genes from genome1
+  for n=1,#genome1.neuron_list do
+    local neuron = genome1.neuron_list[n]
+    offspring:insertNeuron(neuron:copy(), true)
+  end
+
+  local iter1 = 1
+  local iter2 = 1
+
+  while iter1 <= #genome1.link_list and iter2 <= #genome2.link_list do
+    local link1 = genome1.link_list[iter1]
+    local link2 = genome2.link_list[iter2]
+
+    if link1.innovation == link2.innovation then
+      if math.random() < .5 then
+        -- inheriting from genome1
+        offspring:insertLink(link1:copy(), true)
+      else
+        -- inheriting from genome2
+        offspring:insertLink(link2:copy(), true)
+      end
+      iter1 = iter1 + 1
+      iter2 = iter2 + 1
+    elseif link1.innovation < link2.innovation then
+      offspring:insertLink(link1:copy(), true)
+
+      iter1 = iter1 + 1
+    else
+      iter2 = iter2 + 1
+    end
+  end
+
+  for n = iter1, #genome1.link_list do
+    local link = genome1.link_list[n]
+    offspring:insertLink(link:copy(), true)
+  end
+
+  return offspring
 end
 
 function Genome:newNode(parameters, innovation_list)
@@ -256,7 +320,7 @@ function Genome:newNode(parameters, innovation_list)
   -- If it is, the function creates a new innovation for the neuron"
 
   if id then
-    if self:alreadyHaveThisNeuronID(id) then
+    if self:alreadyHaveThisNeuron(id) then
       id = nil
     end
   end
@@ -315,7 +379,7 @@ function Genome:newNode(parameters, innovation_list)
 
   link.enabled = false
 
-  return "successfully added new node between nodes ".. from.id .. " and ".. to.id
+  return "successfully added new node (".. id ..") between nodes ".. from.id .. " and ".. to.id
 end
 
 function Genome:newLink(parameters, innovation_list, noLoop)
@@ -423,7 +487,7 @@ function Genome:getNeuron(id)
   end
 end
 
-function Genome:alreadyHaveThisNeuronID(id)
+function Genome:alreadyHaveThisNeuron(id)
   return self:getNeuron(id) ~= nil
 end
 
@@ -640,7 +704,6 @@ function InnovationList:newLink(from, to)
   self.innovation_counter = self.innovation_counter + 1
 
   if self.links[from] == nil then
-    print("creating new slot for neuron ".. from)
     self.links[from] = {}
   end
 
@@ -718,26 +781,53 @@ local inputs,outputs=2,2
 
 local il = InnovationList()
 il:initialize(inputs, outputs)
-local genome = Genome.minimal(0, inputs, outputs, LuaNEAT.parameters)
---genome.link_list = {}
 
-genome:newNode(LuaNEAT.parameters, il)
+neuron_list = {
+  NeuronGene(1, "hidden", "ReLU", false, 1, 0, 0),--id, neuron_type, activation, recurrent, response, x, y
+  NeuronGene(2, "hidden", "ReLU", false, 1, 0, 0),
+  NeuronGene(3, "hidden", "ReLU", false, 1, 0, 0),
+  NeuronGene(4, "hidden", "ReLU", false, 1, 0, 0),
+  NeuronGene(5, "hidden", "ReLU", false, 1, 0, 0),
+}
 
-for n=1,10 do
-  --print(genome:newLink(LuaNEAT.parameters, il))
+link_list1 = {
+  LinkGene(1, 1, 1, 1, true, false),
+  LinkGene(2, 1, 1, 1, true, false),
+  LinkGene(3, 1, 1, 1, true, false),
+  LinkGene(4, 1, 1, 1, true, false),
+  LinkGene(5, 1, 1, 1, true, false),
+  LinkGene(6, 1, 1, 1, true, false),
+  LinkGene(8, 1, 1, 1, true, false),
+  LinkGene(12, 1, 1, 1, true, false),
+  LinkGene(13, 1, 1, 1, true, false),
+  LinkGene(14, 1, 1, 1, true, false)--innovation, weight, from, to, enabled, recurrent
+}
+
+link_list2 = {
+  LinkGene(1, 1, 1, 1, true, false),
+  LinkGene(2, 1, 1, 1, true, false),
+  LinkGene(3, 1, 1, 1, true, false),
+  LinkGene(4, 1, 1, 1, true, false),
+  LinkGene(7, 1, 1, 1, true, false),
+  LinkGene(9, 1, 1, 1, true, false),
+  LinkGene(10, 1, 1, 1, true, false),
+  LinkGene(11, 1, 1, 1, true, false),
+  LinkGene(14, 1, 1, 1, true, false),
+  LinkGene(15, 1, 1, 1, true, false)--innovation, weight, from, to, enabled, recurrent
+}
+
+local genome1 = Genome(1, neuron_list, link_list1)
+local genome2 = Genome(2, neuron_list, link_list2)--Genome.minimal(0, inputs, outputs, LuaNEAT.parameters)
+
+genome1.fitness = -10
+
+local offspring = Genome.crossover(genome1, genome2)
+for _,neuron in pairs(offspring.neuron_list) do
+  neuron:print();print()
 end
-
-
-for n=1,#genome.neuron_list do
-  genome.neuron_list[n]:print()
-  print()
-end
-
-print("\n")
-
-for n=1,#genome.link_list do
-  genome.link_list[n]:print()
-  print()
+print("\n\n")
+for _,link in pairs(offspring.link_list) do
+  link:print();print()
 end
 
 print("\n")
@@ -749,8 +839,8 @@ print("\n")
   end
 end]]
 
-il:printNeurons(); print()
-il:printLinks()
+--il:printNeurons(); print()
+--il:printLinks()
 
 -----
 
