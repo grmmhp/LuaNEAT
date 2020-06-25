@@ -37,7 +37,7 @@ LuaNEAT.random = love.math.random--math.random
 
 --at the end of development:
 --  remove math.randomseed()
---  remove genome.bias?
+-- check if always using LuaNEAT.random()
 
 --------------------------------
 --         PARAMETERS         --
@@ -54,6 +54,15 @@ LuaNEAT.parameters = {
   excessGenesCoefficient   = 1,
   disjointGenesCoefficient = 1,
   matchingGenesCoefficient = .4,
+
+  sameSpeciesThreshold     = 1,
+  generationsNoImprovement = 15,
+  tournamentSize           = 3,
+
+  youngAgeBonusThreshold = 10,
+  youngAgeFitnessBonus   = 1.3,
+  oldAgeThreshold        = 50,
+  oldAgePenalty          = .7,
 
   -- mutation parameters
   weightLimit = 2,
@@ -110,7 +119,7 @@ local activation = {
 
 
 -- forward declaration of classes
-local Genome, NeuronGene, LinkGene, NeuralNetwork, Neuron, Link, InnovationList, Species, Pool
+local Genome, NeuronGene, LinkGene, NeuralNetwork, InnovationList, Species, Pool
 
 --------------------------------
 --           GENOME           --
@@ -188,6 +197,51 @@ function Genome.minimal(id, inputs, outputs, parameters, noBias)
   return genome
 end
 
+function Genome.sameSpecies(genome1, genome2, parameters)
+  local matching    = 0
+  local excess      = 0
+  local disjoint    = 0
+  local difference  = 0 -- sum of abs val of weight difference between matching links
+
+  local index1 = 1 -- genome 1 index
+  local index2 = 1 -- genome 2 index
+
+  while index1 <= #genome1.link_list and index2 <= #genome2.link_list do
+    local link1 = genome1.link_list[index1]
+    local link2 = genome2.link_list[index2]
+
+    if link1.innovation == link2.innovation then
+      matching = matching + 1
+      difference = difference + math.abs(link1.weight - link2.weight)
+
+      index1 = index1 + 1
+      index2 = index2 + 1
+    elseif link1.innovation < link2.innovation then
+      disjoint = disjoint + 1
+      index1 = index1 + 1
+    elseif link2.innovation < link1.innovation then
+      disjoint = disjoint + 1
+      index2 = index2 + 1
+    end
+  end
+
+  if index1 <= #genome1.link_list then
+    excess = #genome1.link_list-index1 + 1
+  end
+
+  if index2 <= #genome2.link_list then
+    excess = #genome2.link_list-index2 + 1
+  end
+
+  local maxIndex = math.max(#genome1.link_list, #genome2.link_list)
+
+  local distance = (parameters.excessGenesCoefficient*excess
+                  + parameters.disjointGenesCoefficient*disjoint)/maxIndex
+                  + parameters.matchingGenesCoefficient*difference/matching;
+
+  return distance < parameters.sameSpeciesThreshold
+end
+
 function Genome.crossover(genome1, genome2)
   local offspring = Genome()
 
@@ -226,7 +280,7 @@ function Genome.crossover(genome1, genome2)
     local link2 = genome2.link_list[iter2]
 
     if link1.innovation == link2.innovation then
-      if math.random() < .5 then
+      if LuaNEAT.random() < .5 then
         -- inheriting from genome1
         offspring:insertLink(link1:copy(), true)
       else
@@ -482,7 +536,7 @@ function Genome:getNeuron(id)
     elseif self.neuron_list[index].id < id then
       lower = index+1
     else
-      return self.neuron_list[index]
+      return self.neuron_list[index], index
     end
   end
 end
@@ -495,7 +549,7 @@ function Genome:getRandomNeuron(noInputs)
   local lower = 1
   if noInputs then lower = self.number_of_inputs+1 end
 
-  local index = math.random(lower, #self.neuron_list)
+  local index = LuaNEAT.random(lower, #self.neuron_list)
   return self.neuron_list[index]
 end
 
@@ -503,7 +557,7 @@ function Genome:getRandomLink(oldLinkBias)
   local upper = #self.link_list
   if oldLinkBias then upper = upper-math.floor(math.sqrt(#self.link_list)) end
 
-  local index = math.random(1, upper)
+  local index = LuaNEAT.random(1, upper)
   return self.link_list[index]
 end
 
@@ -564,7 +618,55 @@ function Genome:insertLink(gene, new)
 end
 
 function Genome:buildNeuralNetwork()
-  return NeuralNetwork()
+  local function newLink(input, output, weight)
+    local o = {}
+    o.input = input
+    o.output = output
+    o.weight = weight
+
+    return o
+  end
+
+  local function newNeuron(id, neuron_type, response)
+    local o = {}
+    o.id = id -- the neuron gene id
+    o.incoming = {}
+    o.leaving = {}
+    o.sum = 0
+    o.output = 0
+    o.neuron_type = neuron_type
+    o.response = response
+
+    return o
+  end
+
+  local neuron_list = {}
+
+  -- first create the neurons:
+  for n=1,#self.neuron_list do
+    local neuron = self.neuron_list[n]
+    table.insert(neuron_list, newNeuron(neuron.id, neuron.neuron_type, neuron.response))
+  end
+
+  -- now create the links
+  for n=1,#self.link_list do
+    local gene = self.link_list[n]
+
+    if gene.enabled then
+      local link = newLink(link.from, link.to, link.weight)
+
+      local _,i1 = self:getNeuron(gene.from)
+      local _,i2 = self:getNeuron(gene.to)
+
+      local from = neuron_list[i1]
+      local to = neuron_list[i2]
+
+      table.insert(from.incoming, link)
+      table.insert(from.leaving, link)
+    end
+  end
+
+  return NeuralNetwork(self.inputs-self.bias, 1==self.bias, self.outputs, neuron_list, self)--inputs, bias, outputs, neuron_list, genome
 end
 
 --------------------------------
@@ -743,6 +845,49 @@ function InnovationList:printLinks()
 end
 
 --------------------------------
+--           SPECIES          --
+--------------------------------
+
+Species = {}
+Species.mt = {__index = Species}
+
+setmetatable(Species, {
+__call = function(t, id, leader)
+  local o = {}
+
+  o.id = id
+  o.genomes = {}
+  o.leader = leader
+  o.best_fitnessSoFar = 0
+  o.average_fitness = 0
+  o.staleness = 0
+  o.age = 0
+  o.spawn_amount = 0
+
+  return setmetatable(o, Species.mt)
+end})
+
+function Species:adjustFitnesses(parameters)
+  -- "this method boosts the fitnesses of the young, penalizes the
+  --  fitnesses of the old and then performs fitness sharing over
+  --  all the members of the species"
+  for n=1,#self.genomes do
+    local genome = self.genomes[n]
+    local fitness = 0
+
+    if self.age < parameters.youngAgeBonusThreshold then
+      fitness = (genome.fitness)*(parameters.youngAgeFitnessBonus)
+    end
+
+    if self.age > parameters.oldAgeThreshold then
+      fitness = (genome.fitness)*(parameters.oldAgePenalty)
+    end
+
+    genome.adjustedFitness = (fitness)/(#self.genomes)
+  end
+end
+
+--------------------------------
 --       NEURAL NETWORK       --
 --------------------------------
 
@@ -752,21 +897,113 @@ NeuralNetwork.mt = {
 }
 
 setmetatable(NeuralNetwork, {
-  __call = function(t, inputs, outputs, bias, neuron_list, genome)
+  __call = function(t, inputs, bias, outputs, neuron_list, genome)
     local o = {}
 
     o.inputs = inputs
-    o.outputs = outputs
     o.bias = bias
+    o.outputs = outputs
     o.depth = 1
     o.neuron_list = neuron_list or {}
-    o.genome = genome
+    o.genome = genome -- a reference to the genome that created this net
 
     return setmetatable(o, NeuralNetwork.mt)
   end
 })
 
-function NeuralNetwork:forward()
+function NeuralNetwork:forward(...)
+  local run_type
+
+  if type(arg[1]) == "string" then
+    run_type = arg[1]
+    table.remove(arg, 1)
+  end
+
+  if arg.n ~= self.inputs then
+    error("wrong number of inputs", 2)
+  end
+end
+
+function NeuralNetwork:calculateDepth()
+end
+
+------------------------
+--         POOL       --
+------------------------
+
+Pool = {}
+Pool.mt = {
+  __index = Pool,
+}
+
+setmetatable(Pool, {
+  __call = function(t, size, inputs, outputs, noBias)
+    local o = {}
+
+    o.size = size
+    o.inputs = inputs
+    o.outputs = outputs
+    o.noBias = noBias or false
+    o.species = {}
+    o.nets = {}
+    o.last_top = nil -- the last best performing genome
+    o.top_fitness = 0
+    o.generation = -1
+    o.genome_counter = 0
+    o.species_counter = 0
+    o.innovation_list = InnovationList()
+    o.parameters = {}
+
+    -- copying default parameters
+    for k,v in pairs(LuaNEAT.parameters) do
+      o.parameters[k] = v
+    end
+
+    o.innovation_list:initialize()
+
+    return setmetatable(o, Pool.mt)
+  end
+})
+
+function Pool:initialize()
+end
+
+function Pool:nextGeneration()
+  self:cullSpecies()
+  self:removeStaleSpecies()
+
+  self.generation = self.generation + 1
+end
+
+function Pool:calculateSpawnLevels()
+  local average = self:getAverageAdjustedFitness()
+
+  for _, species in ipairs(self.species) do
+    local spawnAmount = 0
+    for __, genome in ipairs(species.genomes) do
+      spawnAmount = spawnAmount + genome.adjustedFitness
+    end
+    species.spawnAmount = spawnAmount/average
+  end
+end
+
+function Pool:cullSpecies(cutToOne)
+  for n=1,#self.species do
+    local species = self.species[n]
+    -- sorting genomes in the species
+    table.sort(species.genomes,
+    function(a, b)
+      return a.fitness > b.fitness
+    end)
+    -- done sorting
+
+    local remaining = math.ceil(#species.genomes/2)
+    if cutToOne then remaining = 1; end
+
+    while #species.genomes > remaining do
+      table.remove(species.genomes)
+    end
+  end
 end
 
 
