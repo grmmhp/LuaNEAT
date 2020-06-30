@@ -31,12 +31,14 @@ math.randomseed(os.time())
 LuaNEAT.random = love.math.random--math.random
 
 --TODO:
---  test Genome:newLink()
---  test Genome:newNode()
---  write activation functions
+-- rewrite NeuralNetwork:getNeuron() (copy Genome:getNeuron() code)
+-- write activation functions
+-- calculate network depth
+-- pass activation function to neural net
 
 --at the end of development:
---  remove math.randomseed()
+-- remove activation from NeuronGene
+-- remove math.randomseed()
 -- check if always using LuaNEAT.random()
 
 --------------------------------
@@ -45,7 +47,7 @@ LuaNEAT.random = love.math.random--math.random
 
 LuaNEAT.parameters = {
   -- general parameters
-  defaultActivation = "ReLU",
+  defaultActivation = "sigmoid",
   findLinkAttempts = 20,
   hiddenNeuronsThreshold = 5,
   maxNeuronsAmount = 1e6,
@@ -81,29 +83,16 @@ LuaNEAT.parameters = {
   alterResponse   = .2,
   maxResponse     = 2,
 
+  -- crossover
   crossoverRate = .75,
 }
-
---------------------------------
---      PRIVATE FUNCTIONS     --
---------------------------------
-
-local function copyParameters()
-  local parameters = {}
-
-  for k,v in pairs(LuaNEAT.parameters) do
-    parameters[k] = v
-  end
-
-  return parameters
-end
 
 
 --------------------------------
 --    ACTIVATION FUNCTIONS    --
 --------------------------------
 
-local activation = {
+local activations = {
   ["sigmoid"] = function(x,p)
     return 1/(1+math.exp(-x*p))
   end,
@@ -653,7 +642,7 @@ function Genome:buildNeuralNetwork()
     local gene = self.link_list[n]
 
     if gene.enabled then
-      local link = newLink(link.from, link.to, link.weight)
+      local link = newLink(gene.from, gene.to, gene.weight)
 
       local _,i1 = self:getNeuron(gene.from)
       local _,i2 = self:getNeuron(gene.to)
@@ -661,12 +650,26 @@ function Genome:buildNeuralNetwork()
       local from = neuron_list[i1]
       local to = neuron_list[i2]
 
-      table.insert(from.incoming, link)
       table.insert(from.leaving, link)
+      table.insert(to.incoming, link)
     end
   end
 
-  return NeuralNetwork(self.inputs-self.bias, 1==self.bias, self.outputs, neuron_list, self)--inputs, bias, outputs, neuron_list, genome
+  return NeuralNetwork(self.number_of_inputs-self.bias, 1==self.bias, self.number_of_outputs, neuron_list, "sigmoid", self)--inputs, bias, outputs, neuron_list, genome
+end
+
+function Genome:printNeuronList()
+  -- for debug purposes
+  for n=1,#self.neuron_list do
+    self.neuron_list[n]:print();print()
+  end
+end
+
+function Genome:printLinkList()
+  -- for debug purposes
+  for n=1,#self.link_list do
+    self.link_list[n]:print();print()
+  end
 end
 
 --------------------------------
@@ -897,14 +900,15 @@ NeuralNetwork.mt = {
 }
 
 setmetatable(NeuralNetwork, {
-  __call = function(t, inputs, bias, outputs, neuron_list, genome)
+  __call = function(t, inputs, bias, outputs, neuron_list, activation, genome)
     local o = {}
 
     o.inputs = inputs
-    o.bias = bias
+    o.bias = bias -- a boolean value
     o.outputs = outputs
     o.depth = 1
     o.neuron_list = neuron_list or {}
+    o.activation = activation
     o.genome = genome -- a reference to the genome that created this net
 
     return setmetatable(o, NeuralNetwork.mt)
@@ -912,16 +916,104 @@ setmetatable(NeuralNetwork, {
 })
 
 function NeuralNetwork:forward(...)
+  local inputs={...}
   local run_type
 
-  if type(arg[1]) == "string" then
-    run_type = arg[1]
-    table.remove(arg, 1)
+  -- handling inputs
+  if type(inputs[1]) == "string" then
+    run_type = inputs[1]
+    table.remove(inputs, 1)
+
+    if run_type ~= "active" and run_type ~= "snapshot" then
+      error("run_type must either be active or snapshot", 2)
+    end
   end
 
-  if arg.n ~= self.inputs then
-    error("wrong number of inputs", 2)
+  if type(inputs[1]) == "table" then
+    inputs = inputs[1]
   end
+
+  if #inputs ~= self.inputs then
+    error("wrong number of inputs ("..#inputs .."); expected ".. self.inputs, 2)
+  end
+
+  -- if there is a bias neuron we add 1 to the input table
+  if self.bias then
+    table.insert(inputs, 1)
+  end
+
+  -- feed forwarding the network
+
+  local flush_count = 1
+
+  if run_type == "snapshot" then
+    flush_count = self.depth
+  end
+
+  local neurons = self.neuron_list
+
+  -- inserting inputs
+  for n=1, #inputs do
+    neurons[n].output = inputs[n]
+  end
+
+  local outputs
+
+  for n=1, flush_count do
+    outputs = {}
+
+    -- first we go from the first hidden neuron (#inputs+#ouputs+1)
+    -- to the last hidden one (#neurons)
+
+    for i = #inputs+self.outputs+1, #neurons do
+      local sum=0
+
+      -- now we sum all the values incoming to this neuron
+      for j=1, #neurons[i].incoming do
+        local link = neurons[i].incoming[j]
+        local value = self:getNeuron(link.input).output
+        local weight = link.weight
+
+        sum = sum + value*weight
+      end
+
+      neurons[i].output = activations[self.activation](sum, neurons[i].response)
+    end
+
+    -- then from the first output (#inputs+1)
+    -- to the last output (#inputs+#outputs)
+
+    for i = #inputs+1, #inputs+self.outputs do
+      local sum=0
+
+      -- now we sum all the values incoming to this neuron
+      for j=1, #neurons[i].incoming do
+        local link = neurons[i].incoming[j]
+        local value = self:getNeuron(link.input).output
+        local weight = link.weight
+
+        sum = sum + value*weight
+      end
+
+      neurons[i].output = activations[self.activation](sum, neurons[i].response)
+      table.insert(outputs, neurons[i].output)
+    end
+  end
+
+  -- clear all neurons in case this is a snapshot update
+  -- so we dont create dependencies
+  if run_type == "snapshot" then
+    for i=#inputs+1, #neurons do
+      neurons[i].output = 0
+    end
+  end
+
+  return outputs
+end
+
+function NeuralNetwork:getNeuron(id)
+  local _,index = self.genome:getNeuron(id)
+  return self.neuron_list[index]
 end
 
 function NeuralNetwork:calculateDepth()
@@ -1019,7 +1111,42 @@ local inputs,outputs=2,2
 local il = InnovationList()
 il:initialize(inputs, outputs)
 
-neuron_list = {
+local genome = Genome.minimal(0, inputs, outputs, LuaNEAT.parameters)
+print(genome:newNode(LuaNEAT.parameters, il))
+print(genome:newLink(LuaNEAT.parameters, il))
+local net = genome:buildNeuralNetwork()
+
+print("--------------------Neurons:\n")
+genome:printNeuronList()
+
+print("\n\n--------------------Links:\n")
+genome:printLinkList()
+
+
+print("\n\n--------------------Links:\n")
+for _, neuron in ipairs(net.neuron_list) do
+  print("Neuron ID ".. neuron.id)
+  for _, link in ipairs(neuron.incoming) do
+    print("-> from ".. link.input .. " to ".. link.output)
+  end
+  for _, link in ipairs(neuron.leaving) do
+    print("-> from ".. link.input .. " to ".. link.output)
+  end
+end
+
+io.write("\n{")
+for _, neuron in ipairs(net.neuron_list) do
+  io.write(neuron.id .. ", ")
+end
+io.write("}\n")
+
+print("Outputs: ")
+outputs = net:forward("active", .5, .75)
+for k,v in ipairs(outputs) do
+  print(v)
+end
+
+--[[neuron_list = {
   NeuronGene(1, "hidden", "ReLU", false, 1, 0, 0),--id, neuron_type, activation, recurrent, response, x, y
   NeuronGene(2, "hidden", "ReLU", false, 1, 0, 0),
   NeuronGene(3, "hidden", "ReLU", false, 1, 0, 0),
@@ -1067,7 +1194,7 @@ for _,link in pairs(offspring.link_list) do
   link:print();print()
 end
 
-print("\n")
+print("\n")]]
 
 --[[for from, link in ipairs(il.links) do
   for n=1,#link do
