@@ -31,9 +31,8 @@ math.randomseed(os.time())
 LuaNEAT.random = love.math.random--math.random
 
 --TODO:
--- rewrite NeuralNetwork:getNeuron() (copy Genome:getNeuron() code)
 -- write activation functions
--- calculate network depth
+-- calculate network depth (?)
 -- pass activation function to neural net
 
 --at the end of development:
@@ -616,7 +615,7 @@ function Genome:buildNeuralNetwork()
     return o
   end
 
-  local function newNeuron(id, neuron_type, response)
+  local function newNeuron(id, neuron_type, response, y)
     local o = {}
     o.id = id -- the neuron gene id
     o.incoming = {}
@@ -625,6 +624,7 @@ function Genome:buildNeuralNetwork()
     o.output = 0
     o.neuron_type = neuron_type
     o.response = response
+    o.y = y
 
     return o
   end
@@ -634,7 +634,8 @@ function Genome:buildNeuralNetwork()
   -- first create the neurons:
   for n=1,#self.neuron_list do
     local neuron = self.neuron_list[n]
-    table.insert(neuron_list, newNeuron(neuron.id, neuron.neuron_type, neuron.response))
+
+    table.insert(neuron_list, newNeuron(neuron.id, neuron.neuron_type, neuron.response, neuron.y))
   end
 
   -- now create the links
@@ -647,13 +648,20 @@ function Genome:buildNeuralNetwork()
       local _,i1 = self:getNeuron(gene.from)
       local _,i2 = self:getNeuron(gene.to)
 
-      local from = neuron_list[i1]
-      local to = neuron_list[i2]
+      local from, to = neuron_list[i1], neuron_list[i2]
 
       table.insert(from.leaving, link)
       table.insert(to.incoming, link)
     end
   end
+
+  table.sort(neuron_list,
+  function(a, b)
+    if a.y == b.y then
+      return a.id < b.id
+    end
+    return a.y > b.y
+  end)
 
   return NeuralNetwork(self.number_of_inputs-self.bias, 1==self.bias, self.number_of_outputs, neuron_list, "sigmoid", self)--inputs, bias, outputs, neuron_list, genome
 end
@@ -962,10 +970,7 @@ function NeuralNetwork:forward(...)
   for n=1, flush_count do
     outputs = {}
 
-    -- first we go from the first hidden neuron (#inputs+#ouputs+1)
-    -- to the last hidden one (#neurons)
-
-    for i = #inputs+self.outputs+1, #neurons do
+    for i = #inputs+1, #neurons do
       local sum=0
 
       -- now we sum all the values incoming to this neuron
@@ -978,25 +983,10 @@ function NeuralNetwork:forward(...)
       end
 
       neurons[i].output = activations[self.activation](sum, neurons[i].response)
-    end
 
-    -- then from the first output (#inputs+1)
-    -- to the last output (#inputs+#outputs)
-
-    for i = #inputs+1, #inputs+self.outputs do
-      local sum=0
-
-      -- now we sum all the values incoming to this neuron
-      for j=1, #neurons[i].incoming do
-        local link = neurons[i].incoming[j]
-        local value = self:getNeuron(link.input).output
-        local weight = link.weight
-
-        sum = sum + value*weight
+      if neurons[i].neuron_type == "output" then
+        table.insert(outputs, neurons[i].output)
       end
-
-      neurons[i].output = activations[self.activation](sum, neurons[i].response)
-      table.insert(outputs, neurons[i].output)
     end
   end
 
@@ -1012,8 +1002,11 @@ function NeuralNetwork:forward(...)
 end
 
 function NeuralNetwork:getNeuron(id)
-  local _,index = self.genome:getNeuron(id)
-  return self.neuron_list[index]
+  for n=1,#self.neuron_list do
+    if self.neuron_list[n].id == id then
+      return self.neuron_list[n]
+    end
+  end
 end
 
 function NeuralNetwork:calculateDepth()
@@ -1113,7 +1106,9 @@ il:initialize(inputs, outputs)
 
 local genome = Genome.minimal(0, inputs, outputs, LuaNEAT.parameters)
 print(genome:newNode(LuaNEAT.parameters, il))
-print(genome:newLink(LuaNEAT.parameters, il))
+print(genome:newNode(LuaNEAT.parameters, il))
+print(genome:newNode(LuaNEAT.parameters, il))
+--print(genome:newLink(LuaNEAT.parameters, il))
 local net = genome:buildNeuralNetwork()
 
 print("--------------------Neurons:\n")
