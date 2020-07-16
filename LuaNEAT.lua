@@ -81,7 +81,7 @@ LuaNEAT.parameters = {
   -- mutation rates
   addLink           = .4,--.07,
   addNode           = .15,--.03,
-  loopedLink        = .1,
+  loopedLink        = .4,--.1,
   enableDisable     = .01,
 
   perturbWeight   = .5,
@@ -1006,11 +1006,9 @@ function Species:breed(id, parameters, innovation_list)
 
     genome2 = self:tournamentSelection(parameters.tournamentSize, 1)
     offspring = Genome.crossover(genome1, genome2)
-    print("breeding genome #".. genome1.id .. " with genome #".. genome2.id)
   else
     -- copying genome 1
     offspring = genome1:copy()
-    print("copying genome #".. genome1.id)
   end
 
   offspring.id = id
@@ -1188,6 +1186,8 @@ function NeuralNetwork:getNeuron(id)
   end
 end
 
+-- NeuralNetwork's public methods
+
 function NeuralNetwork:getFitness()
   return self.genome.fitness
 end
@@ -1199,6 +1199,14 @@ end
 function NeuralNetwork:setFitness(fitness)
   --if fitness < 0 then error("negative fitness", 2) end
   self.genome.fitness = fitness
+end
+
+function NeuralNetwork:getGenomeID()
+  return self.genome.id
+end
+
+function NeuralNetwork:getSpeciesID()
+  return self.genome.species.id
 end
 
 ------------------------
@@ -1220,11 +1228,13 @@ setmetatable(Pool, {
     o.noBias = noBias or false
     o.species = {}
     o.nets = {}
-    o.last_best = nil -- the last best performing genome
+    o.last_best = nil -- the best performing genome from the previous generation
     o.top_fitness = 0
     o.generation = -1
     o.genome_counter = 0
     o.species_counter = 0
+    o.report_statistics = true
+    o.statistics = Statistics()
     o.innovation_list = InnovationList()
     o.parameters = {}
 
@@ -1238,6 +1248,7 @@ setmetatable(Pool, {
 })
 
 function Pool:initialize()
+  if self.generation ~= -1 then error("pool has already been initialized", 2) end
   self.innovation_list:initialize(self.inputs, self.outputs, self.noBias)
 
   for n=1, self.size do
@@ -1251,7 +1262,7 @@ function Pool:initialize()
     self:speciate(genome)
   end
 
-  self.generation = 0
+  self.generation = 1
 end
 
 function Pool:nextGeneration()
@@ -1260,14 +1271,18 @@ function Pool:nextGeneration()
 
   -- making sure all fitnesses are greater than 0
   local lowest_fitness = 0
+  local avg_fitness = 0
   for s=1,#self.species do
     for g=1,#self.species[s].genomes do
       print("Genome #".. self.species[s].genomes[g].id .. "; fitness ".. self.species[s].genomes[g].fitness)
+      avg_fitness = avg_fitness + self.species[s].genomes[g].fitness
       if self.species[s].genomes[g].fitness < lowest_fitness then
         lowest_fitness = self.species[s].genomes[g].fitness
       end
     end
   end
+
+  avg_fitness = avg_fitness/self.size
 
   -- adjusting fitnesses
   for n=1, #self.species do
@@ -1289,6 +1304,7 @@ function Pool:nextGeneration()
     local species = self.species[n]
 
     print("spawning offspring for species #".. self.species[n].id .. " with ".. #self.species[n].genomes .. " genomes")
+    print("this species will spawn ".. species.spawn_amount-1 .. " offspring")
     for n = 1, math.floor(species.spawn_amount)-1 do
       self.genome_counter = self.genome_counter + 1
       local offspring = species:breed(self.genome_counter, self.parameters, self.innovation_list)
@@ -1322,6 +1338,11 @@ function Pool:nextGeneration()
   self.top_fitness = best.fitness
   best.fitness = best.fitness - math.abs(lowest_fitness)
 
+  -- saving new stats
+  if self.report_statistics then
+    self.statistics:new(best.fitness, avg_fitness)
+  end
+
   print("best genome id is ".. best.id)
 
   -- speciating the offsprings
@@ -1352,7 +1373,7 @@ function Pool:speciate(genome)
     local leader = species.leader
 
     if Genome.sameSpecies(genome, leader, self.parameters) then
-      genome.species = species.id
+      genome.species = self.species[n]--species.id
       table.insert(species.genomes, genome); return
     end
   end
@@ -1362,6 +1383,7 @@ function Pool:speciate(genome)
   self.species_counter = self.species_counter + 1
   local id = self.species_counter
   local species = Species(id, genome)
+  genome.species = species
 
   table.insert(species.genomes, genome)
   table.insert(self.species, species)
@@ -1456,7 +1478,7 @@ function Pool:getRandomSpecies()
   return self.species[index]
 end
 
--- Pool's public functions
+-- Pool's public methods
 
 function Pool:getGeneration()
   return self.generation
@@ -1476,12 +1498,40 @@ end
 --------------------------------
 
 Statistics = {}
-Statistics.metatable = {__index=Statistics}
+Statistics.mt = {__index=Statistics}
 
 setmetatable(Statistics, {
   __call = function(t)
+    return setmetatable({}, Statistics.mt)
   end
 })
+
+function Statistics:new(top_fitness, avg_fitness)
+  table.insert(self,{
+    ["top_fitness"] = top_fitness,
+    ["avg_fitness"] = avg_fitness
+  })
+end
+
+function Statistics:getTopFitnessPoints()
+  local points={}
+
+  for n=1,#self do
+    table.insert(points, self[n].top_fitness)
+  end
+
+  return points
+end
+
+function Statistics:getAverageFitnessPoints()
+  local points={}
+
+  for n=1,#self do
+    table.insert(points, self.avg_fitness)
+  end
+
+  return points
+end
 
 --------------------------------
 --      PUBLIC FUNCTIONS      --
@@ -1526,6 +1576,56 @@ function LuaNEAT.newPool(size, inputs, outputs, noBias)
   noBias = (noBias == true)
 
   return Pool(size, inputs, outputs, noBias)
+end
+
+function LuaNEAT.save(pool, filename)
+  local file,error = io.open(filename, "w+")
+  if not file then
+    print("cannot open file: ".. error)
+    return
+  end
+
+  --[[
+  o.size = size
+  o.inputs = inputs
+  o.outputs = outputs
+  o.noBias = noBias or false
+  o.species = {}
+  o.nets = {}
+  o.last_best = nil -- the last best performing genome
+  o.top_fitness = 0
+  o.generation = -1
+  o.genome_counter = 0
+  o.species_counter = 0
+  o.innovation_list = InnovationList()
+  o.parameters = {}
+  ]]
+
+  file:write(
+    "pool" .."\n" ..
+    pool.size .."\n"..
+    pool.inputs .."\n"..
+    pool.outputs .."\n"..
+    tostring(pool.noBias) .."\n"..
+    pool.top_fitness .."\n"..
+    pool.generation .."\n"..
+    pool.genome_counter
+
+    .."\nparameters\n"
+  )
+
+  print(LuaNEAT.parameters.findLinkAttempts)
+  print(LuaNEAT.parameters["findLinkAttempts"])
+
+  for k,v in pairs(pool.parameters) do
+    file:write(k .. ":".. v .. "\n")
+    --file:write(v .. "\n")
+  end
+
+  file:close()
+end
+
+function LuaNEAT.load(filename)
 end
 
 function LuaNEAT.version()

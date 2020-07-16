@@ -2,10 +2,10 @@ LuaNEAT = require"LuaNEAT"
 
 TheGrid = {}
 
-local pool = LuaNEAT.newPool(300, 3, 3)
+local pool = LuaNEAT.newPool(50, 3, 3)
 
 local creatures = {radius = 10, velocity = 4, angularVelocity = math.rad(5), maxLife = 300, sensorLength = 150, drawPointer = false, drawNearest = false}
-local particles = {radius = 5, amount = 50, spawnAttempts = 100, timer = 0, spawnTime = 15}
+local particles = {radius = 5, amount = 75, spawnAttempts = 100, timer = 0, spawnTime = 15}
 
 local gridSize = 100
 local drawMode = 0
@@ -216,6 +216,18 @@ function TheGrid.load()
   spawnAllParticles()
 end
 
+function TheGrid.keypressed(key)
+  if key == "d" then
+    drawMode = (drawMode+1)%4
+  elseif key == "s" then
+    speed = speed * 2
+
+    if speed > 2048 then
+      speed = 1
+    end
+  end
+end
+
 function TheGrid.update(dt)
   for s = 1, speed do
     for n = #creatures, 1, -1 do
@@ -361,28 +373,4 @@ function TheGrid.draw()
   end
 end
 
---
-
-function love.load()
-  TheGrid.load()
-end
-
-function love.keypressed(key)
-  if key == "d" then
-    drawMode = (drawMode+1)%4
-  elseif key == "s" then
-    speed = speed * 2
-
-    if speed > 2048 then
-      speed = 1
-    end
-  end
-end
-
-function love.update(dt)
-  TheGrid.update(dt)
-end
-
-function love.draw()
-  TheGrid.draw()
-end
+return TheGrid
