@@ -32,7 +32,7 @@ local LuaNEAT = {
 LuaNEAT.random = love.math.random--math.random
 
 --TODO:
--- debug NeuralNetwork:incrementFitness() and remove it
+-- dont kill the species with highest fitness in the pool even if its beyond the staleness limit
 -- assign species reference to genomes
 -- write activation functions
 -- pass activation function to neural net
@@ -41,6 +41,12 @@ LuaNEAT.random = love.math.random--math.random
 -- remove activation from NeuronGene
 -- remove math.randomseed()
 -- check if always using LuaNEAT.random()
+
+--ISSUES:
+--  fix Genome:newNode() stuck when searching for links
+--  Pool:removeWeakSpecies() removing species with the best genome in the pool
+
+
 
 --PUBLIC FUNCTIONS
 -- NeuralNetwork:incrementFitness(value)
@@ -69,19 +75,14 @@ LuaNEAT.parameters = {
   maxStaleness             = 15,
   tournamentSize           = 3,
 
-  youngAgeBonusThreshold = 10,
-  youngAgeFitnessBonus   = 1.3,
-  oldAgeThreshold        = 50,
-  oldAgePenalty          = .7,
-
   -- mutation parameters
   weightLimit   = 2,
   responseLimit = 2,
 
   -- mutation rates
-  addLink           = .4,--.07,
-  addNode           = .15,--.03,
-  loopedLink        = .4,--.1,
+  addLink           = .07,
+  addNode           = .03,
+  loopedLink        = .1,
   enableDisable     = .01,
 
   perturbWeight   = .5,
@@ -341,6 +342,11 @@ function Genome:newNode(parameters, innovation_list)
       -- make sure the link is enabled,
       -- is not recurrent and is not
       -- connected to a bias neuron
+
+      print("link enabled? ".. tostring(link.enabled))
+      print("link recurrent? ".. tostring(link.recurrent))
+      print("bias? ".. tostring(from.neuron_type == "bias"))
+      print()
 
       if (link.enabled) and (not link.recurrent) and (from.neuron_type ~= "bias") then
         break
@@ -745,11 +751,11 @@ function Genome:printLinkList()
   end
 end
 
-function Genome:draw(width, height, sx, sy)
+function Genome:draw(x, y, width, height)
   local radius = 10
 
   local function transform(px, py, w, h)
-    return px*width+sx, py*height+sy
+    return px*width+x, py*height+y
   end
 
   for _, link in ipairs(self.link_list) do
@@ -771,23 +777,19 @@ function Genome:draw(width, height, sx, sy)
   end
 
   for _, neuron in ipairs(self.neuron_list) do
-    local x, y = transform(neuron.x, neuron.y, width, height)
+    local xp, yp = transform(neuron.x, neuron.y, width, height)
 
     if neuron.ntype ~= "bias" then
-      --love.graphics.setColor(1, 0, 0, 1)
       love.graphics.setColor(.8, .8, .8, 1)
     else
-      --love.graphics.setColor(0, 1, 0, 1)
       love.graphics.setColor(.9, .9, .9, 1)
     end
 
-    love.graphics.circle("fill", x, y, radius)--116/255, 249/255, 246/255
-    --love.graphics.setColor(0, 0, 0, 1)
+    love.graphics.circle("fill", xp, yp, radius)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.circle("line", x, y, radius)
+    love.graphics.circle("line", xp, yp, radius)
 
     love.graphics.setColor(1, 1, 1, 1)
-    --love.graphics.print(neuron.id, x, y)
   end
 end
 
@@ -987,7 +989,6 @@ __call = function(t, id, leader)
   o.best_fitness_yet = 0
   o.average_fitness = 0
   o.staleness = 0 -- number of generations without improvement
-  o.age = 0
   o.spawn_amount = 0
 
   return setmetatable(o, Species.mt)
@@ -1042,24 +1043,11 @@ function Species:tournamentSelection(size, shift)
 end
 
 function Species:adjustFitnesses(parameters, fitness_floor)
-  -- "this method boosts the fitnesses of the young, penalizes the
-  --  fitnesses of the old and then performs fitness sharing over
-  --  all the members of the species"
+  -- performs fitness sharing
   for n=1,#self.genomes do
     local genome = self.genomes[n]
-    local fitness = 0
 
-    genome.fitness = genome.fitness + math.abs(fitness_floor)
-
-    if self.age < parameters.youngAgeBonusThreshold then
-      fitness = (genome.fitness)*(parameters.youngAgeFitnessBonus)
-    end
-
-    if self.age > parameters.oldAgeThreshold then
-      fitness = (genome.fitness)*(parameters.oldAgePenalty)
-    end
-
-    genome.adjusted_fitness = (fitness)/(#self.genomes)
+    genome.adjusted_fitness = (genome.fitness)/(#self.genomes)
   end
 end
 
@@ -1122,7 +1110,7 @@ function NeuralNetwork:forward(...)
     error("wrong number of inputs ("..#inputs .."); expected ".. self.inputs, 2)
   end
 
-  -- if there is a bias neuron we add 1 to the input table
+  -- if there is a bias neuron we insert 1 into the input array
   if self.bias then
     table.insert(inputs, 1)
   end
@@ -1188,16 +1176,16 @@ end
 
 -- NeuralNetwork's public methods
 
+function NeuralNetwork:draw(x, y, width, height)
+  self.genome:draw(x, y, width, height)
+end
+
 function NeuralNetwork:getFitness()
   return self.genome.fitness
 end
 
-function NeuralNetwork:incrementFitness(value)
-  self.genome.fitness = self.genome.fitness + value
-end
-
 function NeuralNetwork:setFitness(fitness)
-  --if fitness < 0 then error("negative fitness", 2) end
+  if fitness < 0 then error("negative fitness", 2) end
   self.genome.fitness = fitness
 end
 
@@ -1257,8 +1245,6 @@ function Pool:initialize()
     local genome = Genome.minimal(id, self.inputs, self.outputs, self.parameters, self.noBias)
 
     table.insert(self.nets, genome:buildNeuralNetwork())
-
-    genome.fitness = LuaNEAT.random(1, 100)
     self:speciate(genome)
   end
 
@@ -1269,24 +1255,24 @@ function Pool:nextGeneration()
   -- deleting previously created neural nets
   self.nets = {}
 
-  -- making sure all fitnesses are greater than 0
-  local lowest_fitness = 0
+  -- stats
   local avg_fitness = 0
-  for s=1,#self.species do
-    for g=1,#self.species[s].genomes do
-      print("Genome #".. self.species[s].genomes[g].id .. "; fitness ".. self.species[s].genomes[g].fitness)
-      avg_fitness = avg_fitness + self.species[s].genomes[g].fitness
-      if self.species[s].genomes[g].fitness < lowest_fitness then
-        lowest_fitness = self.species[s].genomes[g].fitness
+  local fitnesses = {} -- inserting all fitnesses to a table so we can sort it and get the median fitness
+
+  -- getting fitness stats
+  if self.report_statistics then
+    for s=1,#self.species do
+      for g=1,#self.species[s].genomes do
+        avg_fitness = avg_fitness + self.species[s].genomes[g].fitness
+        table.insert(fitnesses, self.species[s].genomes[g].fitness)
       end
     end
+    avg_fitness = avg_fitness/self.size
   end
-
-  avg_fitness = avg_fitness/self.size
 
   -- adjusting fitnesses
   for n=1, #self.species do
-    self.species[n]:adjustFitnesses(self.parameters, lowest_fitness)
+    self.species[n]:adjustFitnesses(self.parameters)
   end
 
   local species_amount = #self.species
@@ -1303,8 +1289,6 @@ function Pool:nextGeneration()
   for n=1, #self.species do
     local species = self.species[n]
 
-    print("spawning offspring for species #".. self.species[n].id .. " with ".. #self.species[n].genomes .. " genomes")
-    print("this species will spawn ".. species.spawn_amount-1 .. " offspring")
     for n = 1, math.floor(species.spawn_amount)-1 do
       self.genome_counter = self.genome_counter + 1
       local offspring = species:breed(self.genome_counter, self.parameters, self.innovation_list)
@@ -1336,14 +1320,20 @@ function Pool:nextGeneration()
   end
   self.last_best = best
   self.top_fitness = best.fitness
-  best.fitness = best.fitness - math.abs(lowest_fitness)
 
   -- saving new stats
   if self.report_statistics then
-    self.statistics:new(best.fitness, avg_fitness)
-  end
+    local med_fitness
 
-  print("best genome id is ".. best.id)
+    table.sort(fitnesses)
+    if math.fmod(#fitnesses,2) == 0 then
+      med_fitness = (fitnesses[#fitnesses/2] + fitnesses[(#fitnesses/2)+1]) / 2
+    else
+      med_fitness = fitnesses[math.ceil(#fitnesses/2)]
+    end
+
+    self.statistics:new(self.top_fitness, avg_fitness, med_fitness)
+  end
 
   -- speciating the offsprings
   for n=1, #spawn do
@@ -1361,9 +1351,12 @@ function Pool:nextGeneration()
     end
   end
 
+  -- correcting the best genome fitness
+  best.fitness = self.top_fitness
+
   self.generation = self.generation + 1
 
-  return "Generation ".. self.generation-1 .." stats:\n".. weak_removed .. " weak species removed\n".. stale_removed .. " stale species removed\nNow with ".. #self.species .." species"
+  --return "Generation ".. self.generation-1 .." stats:\n".. weak_removed .. " weak species removed\n".. stale_removed .. " stale species removed\nNow with ".. #self.species .." species"
 end
 
 function Pool:speciate(genome)
@@ -1478,19 +1471,48 @@ function Pool:getRandomSpecies()
   return self.species[index]
 end
 
--- Pool's public methods
+-- Pool's public methods --
 
+-- returns the current generation
 function Pool:getGeneration()
   return self.generation
 end
 
+-- returns how many species are in the pool
 function Pool:getSpeciesAmount()
   return #self.species
 end
 
+-- returns all the neural nets so we can train them
 function Pool:getNeuralNetworks()
   if #self.nets == 0 then error("Pool must be initialized first", 2) end
   return self.nets
+end
+
+-- returns the current best neural net
+function Pool:getBestPerformer()
+  local best = self.species[1].genomes[1]
+
+  for s=1,#self.species do
+    for g=1,#self.species[s].genomes do
+      local current = self.species[s].genomes[g]
+
+      if current.fitness > best.fitness then
+        best = current
+      elseif current.fitness == best.fitness then
+        if #current.link_list < #best.link_list then
+          best = current
+        end
+      end
+    end
+  end
+
+  return best:buildNeuralNetwork()
+end
+
+-- returns the best neural net from the previous generation
+function Pool:getLastBestPerformer()
+  return self.last_best:buildNeuralNetwork()
 end
 
 --------------------------------
@@ -1506,10 +1528,11 @@ setmetatable(Statistics, {
   end
 })
 
-function Statistics:new(top_fitness, avg_fitness)
+function Statistics:new(top_fitness, avg_fitness, med_fitness)
   table.insert(self,{
     ["top_fitness"] = top_fitness,
-    ["avg_fitness"] = avg_fitness
+    ["avg_fitness"] = avg_fitness,
+    ["med_fitness"] = med_fitness,
   })
 end
 
@@ -1527,7 +1550,17 @@ function Statistics:getAverageFitnessPoints()
   local points={}
 
   for n=1,#self do
-    table.insert(points, self.avg_fitness)
+    table.insert(points, self[n].avg_fitness)
+  end
+
+  return points
+end
+
+function Statistics:getMedianFitnessPoints()
+  local points={}
+
+  for n=1,#self do
+    table.insert(points, self[n].med_fitness)
   end
 
   return points
@@ -1579,48 +1612,81 @@ function LuaNEAT.newPool(size, inputs, outputs, noBias)
 end
 
 function LuaNEAT.save(pool, filename)
-  local file,error = io.open(filename, "w+")
+  local file,error = io.open(filename..".txt", "w+")
   if not file then
     print("cannot open file: ".. error)
     return
   end
 
-  --[[
-  o.size = size
-  o.inputs = inputs
-  o.outputs = outputs
-  o.noBias = noBias or false
-  o.species = {}
-  o.nets = {}
-  o.last_best = nil -- the last best performing genome
-  o.top_fitness = 0
-  o.generation = -1
-  o.genome_counter = 0
-  o.species_counter = 0
-  o.innovation_list = InnovationList()
-  o.parameters = {}
-  ]]
+  -- saving order:
+  --  pool info
+  --  pool parameters
+  --  innovation list info
+  --  neuron innovations
+  --  link innovations
+  --  species
 
+
+  -- pool info
+  file:write("POOL\n")
+  for k,v in pairs(pool) do
+    if type(v) ~= "table" then
+      file:write(k .. ":".. tostring(v).. "\n")
+    end
+  end
+
+  -- pool parameters
+  file:write("PARAMETERS\n")
+  for k,v in pairs(pool.parameters) do
+    file:write(k .. ":".. tostring(v).. "\n")
+  end
+
+  -- innovation list info
   file:write(
-    "pool" .."\n" ..
-    pool.size .."\n"..
-    pool.inputs .."\n"..
-    pool.outputs .."\n"..
-    tostring(pool.noBias) .."\n"..
-    pool.top_fitness .."\n"..
-    pool.generation .."\n"..
-    pool.genome_counter
+    "INNOVATION LIST\n" ..
 
-    .."\nparameters\n"
+    "neuron_counter:" .. pool.innovation_list.neuron_counter .. "\n" ..
+    "innovation_counter:" .. pool.innovation_list.neuron_counter .. "\n"
   )
 
-  print(LuaNEAT.parameters.findLinkAttempts)
-  print(LuaNEAT.parameters["findLinkAttempts"])
-
-  for k,v in pairs(pool.parameters) do
-    file:write(k .. ":".. v .. "\n")
-    --file:write(v .. "\n")
+  -- neuron innovations
+  for from,list in ipairs(pool.innovation_list.neurons) do
+    for n=1,#list do
+      file:write(
+        "NEURON INNOVATION".."\n" ..
+        "id:".. list[n].id .."\n" ..
+        "from:".. from .."\n"..
+        "to:".. list[n].to .."\n"
+      )
+    end
   end
+
+  -- link innovations
+  for from,list in ipairs(pool.innovation_list.links) do
+    for n=1,#list do
+      file:write(
+        "LINK INNOVATION".."\n" ..
+        "innovation:".. list[n].innovation .."\n" ..
+        "from:".. from .."\n"..
+        "to:".. list[n].to .."\n"
+      )
+    end
+  end
+
+  -- species
+  for s=1,#pool.species do
+    file:write("SPECIES\n")
+    for k, v in pairs(pool.species[s]) do
+      if type(v) ~= "table" then
+        file:write(k..":"..v.."\n")
+      end
+    end
+  end
+
+
+
+  --o.neuron_counter = 0
+  --o.innovation_counter = 0
 
   file:close()
 end

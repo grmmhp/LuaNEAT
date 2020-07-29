@@ -15,7 +15,7 @@ local radius = 5
 
 local length = 100
 
-local offset = love.math.random(-5, 5)
+local offset = love.math.random(-10, 10)
 local initial_angle = -math.pi/2 + math.rad(offset)
 local last_angle -- used to compute the angular velocity
 
@@ -29,7 +29,7 @@ local objects = {}
 local mode="cart"
 
 -- neat
-local pool = neat.newPool(3, 2, 2, true)--4, 2)
+local pool = neat.newPool(10, 2, 2, true)--4, 2)
 pool:initialize()
 local networks = pool:getNeuralNetworks()
 local evaluating = 1
@@ -193,27 +193,29 @@ function cartpole.draw()
 
     love.graphics.setColor(0,0,0,1)
 
-    local margin=30
+    local margin=50
     love.graphics.rectangle("line", margin, margin, 650-margin*2, 650-margin*2)
 
     local points = pool.statistics:getTopFitnessPoints()
     local top_fit=-math.huge
+    local min_fit=math.huge
     for n=1,#points do
       if points[n]>top_fit then
         top_fit = points[n]
+      end
+      if points[n]<min_fit then
+        min_fit = points[n]
       end
     end
 
     local points_xy = {}
     for n=1,#points do
       local x = map(n, 1, #points, margin, 650-margin)
-      local y = map(points[n], 0, top_fit, 650-margin, margin)
+      local y = map(points[n], min_fit, top_fit, 650-margin, margin)
       table.insert(points_xy, x)
       table.insert(points_xy, y)
-      print(x, points[n])
     end
-    print("\n\n")
-    love.graphics.setColor(0,.8,.3,1)
+    love.graphics.setColor(0,.3,.8,1)
     if #points>1 then
       love.graphics.line(points_xy)
     end
@@ -222,6 +224,8 @@ function cartpole.draw()
       local y = points_xy[2*n]
       love.graphics.circle("fill", x, y, 2.5)
     end
+    love.graphics.setColor(0,0,0,1)
+    love.graphics.print("max fitness: ".. top_fit .. "\nmin fitness: ".. min_fit, 10, 10)
   end
 end
 

@@ -1,4 +1,4 @@
-local demo = require"demos/cart-pole"
+local demo = require"demos/xor"
 
 function love.load()
   demo.load()
