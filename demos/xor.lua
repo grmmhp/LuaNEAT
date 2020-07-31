@@ -3,7 +3,7 @@ local LuaNEAT = require"LuaNEAT"
 local xor = {}
 
 -- initializing LuaNEAT
-local pool_size = 1000
+local pool_size = 100
 local inputs = 2 -- number of inputs
 local outputs = 1 -- number of outputs
 local pool = LuaNEAT.newPool(pool_size, inputs, outputs)

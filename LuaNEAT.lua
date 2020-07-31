@@ -32,7 +32,7 @@ local LuaNEAT = {
 LuaNEAT.random = love.math.random--math.random
 
 --TODO:
--- dont kill the species with highest fitness in the pool even if its beyond the staleness limit
+-- remove species:adjustFitnesses()
 -- assign species reference to genomes
 -- write activation functions
 -- pass activation function to neural net
@@ -42,7 +42,7 @@ LuaNEAT.random = love.math.random--math.random
 -- remove math.randomseed()
 -- check if always using LuaNEAT.random()
 
---ISSUES:
+--KNOWN ISSUES:
 --  fix Genome:newNode() stuck when searching for links
 --  Pool:removeWeakSpecies() removing species with the best genome in the pool
 
@@ -135,7 +135,6 @@ setmetatable(Genome, {
     o.id = id or -1
     o.species = -1
     o.fitness = 0
-    o.adjusted_fitness = 0
     o.number_of_inputs = 0
     o.number_of_outputs = 0
     o.bias = 0
@@ -306,7 +305,7 @@ end
 
 function Genome:newNode(parameters, innovation_list)
   if #self.neuron_list >= parameters.maxNeuronsAmount then return end
-
+local nn
   local neuron  -- the neuron to be added
   local from    -- the neuron with link going to the new neuron
   local to      -- the neuron with link coming to the new neuron
@@ -335,18 +334,14 @@ function Genome:newNode(parameters, innovation_list)
   else
     -- genome is large enough for any
     -- link to be selected at random
-    while true do
+    for n=1,#self.link_list do
+      nn=n
       link = self:getRandomLink()
       from = self:getNeuron(link.from)
 
       -- make sure the link is enabled,
       -- is not recurrent and is not
       -- connected to a bias neuron
-
-      print("link enabled? ".. tostring(link.enabled))
-      print("link recurrent? ".. tostring(link.recurrent))
-      print("bias? ".. tostring(from.neuron_type == "bias"))
-      print()
 
       if (link.enabled) and (not link.recurrent) and (from.neuron_type ~= "bias") then
         break
@@ -729,7 +724,6 @@ function Genome:copy()
   genome = Genome(self.id, neuron_list, link_list)
   genome.species = self.species
   genome.fitness = self.fitness
-  genome.adjusted_fitness = self.adjusted_fitness
   genome.number_of_inputs = self.number_of_inputs
   genome.number_of_outputs = self.number_of_outputs
   genome.bias = self.bias
@@ -1014,7 +1008,6 @@ function Species:breed(id, parameters, innovation_list)
 
   offspring.id = id
   offspring.fitness = 0
-  offspring.adjustedFitness = 0
 
   offspring:mutate(parameters, innovation_list)
 
@@ -1042,14 +1035,14 @@ function Species:tournamentSelection(size, shift)
   return best, index
 end
 
-function Species:adjustFitnesses(parameters, fitness_floor)
+--[[function Species:adjustFitnesses(parameters, fitness_floor)
   -- performs fitness sharing
   for n=1,#self.genomes do
     local genome = self.genomes[n]
 
     genome.adjusted_fitness = (genome.fitness)/(#self.genomes)
   end
-end
+end]]
 
 function Species:getBestGenome()
   local best = self.genomes[1]
@@ -1270,11 +1263,6 @@ function Pool:nextGeneration()
     avg_fitness = avg_fitness/self.size
   end
 
-  -- adjusting fitnesses
-  for n=1, #self.species do
-    self.species[n]:adjustFitnesses(self.parameters)
-  end
-
   local species_amount = #self.species
   local weak_removed, stale_removed
 
@@ -1356,7 +1344,7 @@ function Pool:nextGeneration()
 
   self.generation = self.generation + 1
 
-  --return "Generation ".. self.generation-1 .." stats:\n".. weak_removed .. " weak species removed\n".. stale_removed .. " stale species removed\nNow with ".. #self.species .." species"
+  return "Generation ".. self.generation-1 .. ":\n".. weak_removed .. " weak species removed\n".. stale_removed .. " stale species removed"
 end
 
 function Pool:speciate(genome)
@@ -1422,16 +1410,17 @@ function Pool:removeWeakSpecies()
 end
 
 function Pool:getAverageAdjustedFitness()
-  local sum = 0
-  local count = 0
+  local total_sum = 0
   for n=1, #self.species do
+    local adj_sum = 0
     for k=1, #self.species[n].genomes do
-      count = count + 1
-      sum = sum + self.species[n].genomes[k].adjusted_fitness
+      adj_sum = adj_sum + self.species[n].genomes[k].fitness
     end
+    adj_sum = adj_sum/#self.species[n].genomes
+    total_sum = total_sum + adj_sum
   end
 
-  return sum/count
+  return total_sum/self.size
 end
 
 function Pool:calculateSpawnLevels()
@@ -1440,7 +1429,8 @@ function Pool:calculateSpawnLevels()
   for n=1,#self.species do
     local spawn_amount = 0
     for k=1, #self.species[n].genomes do
-      spawn_amount = spawn_amount + self.species[n].genomes[k].adjusted_fitness
+      local adjusted_fitness = self.species[n].genomes[k].fitness/#self.species[n].genomes
+      spawn_amount = spawn_amount + adjusted_fitness
     end
     self.species[n].spawn_amount = spawn_amount/average
   end
