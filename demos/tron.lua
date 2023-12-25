@@ -2,17 +2,27 @@ LuaNEAT = require"LuaNEAT"
 
 TheGrid = {}
 
-local pool = LuaNEAT.newPool(50, 3, 3)
+local pool = LuaNEAT.newPool(100, 1, 2, false)
 
-local creatures = {radius = 10, velocity = 4, angularVelocity = math.rad(5), maxLife = 300, sensorLength = 150, drawPointer = false, drawNearest = false}
-local particles = {radius = 5, amount = 75, spawnAttempts = 100, timer = 0, spawnTime = 15}
+local creatures = {radius = 10, maxVelocity = 100, maxAngularVelocity=1, angularVelocity = math.rad(5), maxLife = 300, sensorLength = 150, drawPointer = false, drawNearest = false}
+local particles = {radius = 5, amount = 100, spawnAttempts = 100, timer = 0, spawnTime = 15}
 
 local gridSize = 100
 local drawMode = 0
 
 local speed = 1
 
---
+-- some math functions
+local function map(value, x0, x1, y1, y2)
+  return (value-x0)/(x1-x0)*(y2-y1) + y1
+end
+
+local function clamp(value, x0, x1, y1, y2)
+  value = math.min(value, x1)
+  value = math.max(value, x0)
+
+  return map(value, x0, x1, y1, y2)
+end
 
 local function distance(creature, particle)
   return math.sqrt((creature.x-particle.x)^2+(creature.y-particle.y)^2)
@@ -24,19 +34,42 @@ local function newCreature(brain)
   creature.x = love.math.random(0, 799)
   creature.y = love.math.random(0, 599)
   creature.angle = love.math.random()*2*math.pi
+  creature.angularVelocity = 0
+  creature.angularAcceleration = 0
+
+  creature.velocityX = 0
+  creature.velocityY = 0
+
+  creature.accelerationX = 0
+  creature.accelerationY = 0
+
+
+  creature.velocity=creatures.maxVelocity
+  creature.acceleration=0
   creature.life = creatures.maxLife
   creature.brain = brain
 
   return creature
 end
 
-local function moveCreature(creature, velocity)
-  creature.x = creature.x + velocity*math.cos(creature.angle)
-  creature.y = creature.y + velocity*math.sin(creature.angle)
+local function moveCreature(creature, dt)
+  --creature.velocity = creature.velocity + math.sqrt(creature.accelerationX^2 + creature.accelerationY^2)*dt--creature.acceleration*dt
+  creature.velocityX = creature.velocityX + creature.accelerationX*dt
+  creature.velocityY = creature.velocityY + creature.accelerationY*dt
+
+  local vel = math.sqrt(creature.velocityX^2 + creature.velocityY^2)
+  if vel > creatures.maxVelocity then creature.velocityX = creature.velocityX/creatures.maxVelocity; creature.velocityY = creature.velocityX/creatures.maxVelocity end
+
+  creature.x = creature.x + creature.velocityX*dt--*math.cos(creature.angle)*dt
+  creature.y = creature.y + creature.velocityY*dt--math.sin(creature.angle)*dt
 end
 
-local function rotateCreature(creature, angle)
-  creature.angle = creature.angle + angle
+local function rotateCreature(creature, dt)--, angle)
+  creature.angularVelocity = creature.angularVelocity + creature.angularAcceleration*dt
+
+  if creature.angularVelocity > creatures.maxAngularVelocity then creature.angularVelocity = creatures.maxAngularVelocity end
+
+  creature.angle = creature.angle + creature.angularVelocity*dt--angle
 
   if creature.angle < 0 then
     creature.angle = 2*math.pi +   creature.angle
@@ -49,6 +82,7 @@ local function checkCollision(creature, particle)
   if not particle then return; end
 
   if distance(creature, particle) < creatures.radius + particles.radius then
+    creature.brain:incrementFitness(10)
     return true
   end
 
@@ -76,7 +110,7 @@ end
 
 local function getAngle(creature, particle)
   local dx = creature.x-particle.x
-  local dy = creature.y-particle.y
+  local dy = particle.y-creature.y
 
   return math.atan2(dy, dx)
 end
@@ -234,12 +268,25 @@ function TheGrid.update(dt)
       local creature = creatures[n]
       local nearest, index = getNearestParticle(creature)
 
+      local dx, dy
+
+      if not nearest then
+        dx=0
+        dy=0
+      else
+        if creature.x > nearest.x then dx=1 else dx=-1 end
+        if creature.y > nearest.y then dy=1 else dy=-1 end
+      end
+
       -- inputting the neural network
       if nearest then
         local inputs = {
-          distance(creature, nearest)/creatures.sensorLength,
-          getQuadrantAngle(creature)/math.pi,
-          getAngle(creature, nearest)/math.pi,
+          --distance(creature, nearest)/creatures.sensorLength,
+          --getQuadrantAngle(creature)/math.pi,
+          map(getAngle(creature, nearest), -math.pi, math.pi, -1, 1),
+          --dx,
+          --dy,
+          --map(creature.velocity, 0, creatures.maxVelocity, -1, 1),
           --[[creature.x/800,
           creature.y/800,
           nearest.x/800,
@@ -247,9 +294,17 @@ function TheGrid.update(dt)
         }
 
         local outputs = creature.brain:forward(inputs)
-        moveCreature(creature, outputs[1]*creatures.velocity)
-        rotateCreature(creature, -outputs[2]*creatures.angularVelocity)
-        rotateCreature(creature, outputs[3]*creatures.angularVelocity)
+        --creature.x = creature.x + (2*outputs[1]-1)*creatures.velocity*50*dt
+        --creature.y = creature.y + (2*outputs[2]-1)*creatures.velocity*50*dt
+        --creature.angularAcceleration = (2*outputs[1]-1)*100
+        --creature.acceleration = (2*outputs[2]-1)*50
+        local acc = 20--outputs[3]*20
+        creature.accelerationX = acc*outputs[1]
+        creature.accelerationY = acc*outputs[2]
+        moveCreature(creature, dt)--outputs[1]*creatures.velocity)
+        --rotateCreature(creature, dt)--(2*outputs[2]-1)*creatures.angularVelocity)
+        --creature.angle = outputs[1]*2*math.pi
+        --rotateCreature(creature, outputs[3]*creatures.angularVelocity)
 
         --[[if outputs[1] > .5 then
           moveCreature(creature, creatures.velocity)
@@ -290,16 +345,30 @@ function TheGrid.update(dt)
         table.remove(particles, index)
       end
 
+      maxfit=0
+
       if creature.life == 0 then
         table.remove(creatures, n)
       else
-        creature.brain:incrementFitness(1)
+        --creature.brain:incrementFitness(10)
       end
+
+      if creature.brain:getFitness() > maxfit then
+        maxfit = creature.brain:getFitness()
+      end
+
     end
 
     -- next generation
     if #creatures == 0 then
       next()
+      --maxfit=0
+
+      --[[print("creatures resetted\nfitnesses:\n")
+      for n=1,#creatures do
+        print(creatures[n].brain:getFitness())
+      end
+      error()]]
     end
 
     if #particles < particles.amount then
@@ -311,6 +380,8 @@ function TheGrid.update(dt)
       end
     end
   end
+
+  --print("max fitness is ".. maxfit)
 end
 
 function TheGrid.draw()
@@ -369,7 +440,7 @@ function TheGrid.draw()
     -- drawing the best net
     love.graphics.setColor(0, 0, 0, .25)
     love.graphics.rectangle("fill", 5, 350+19-5, 200-53+5, 232)
-    pool:getBestPerformer():draw(200, 200, -19, 380)
+    pool:getBestPerformer():draw(200, 200, 350-19, 380)
   end
 end
 

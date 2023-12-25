@@ -1,0 +1,1153 @@
+POOL
+size:100
+top_fitness:0.99999974680846
+generation:128
+outputs:1
+species_counter:9
+report_statistics:true
+genome_counter:12164
+inputs:2
+noBias:false
+PARAMETERS
+addNode:0.03
+loopedLink:0.1
+enableDisable:0.01
+perturbWeight:0.5
+replaceWeight:0.1
+maxPerturbation:0.1
+perturbResponse:0.1
+alterResponse:0.2
+maxResponse:2
+crossoverRate:0.75
+defaultActivation:sigmoid
+findLinkAttempts:20
+hiddenNeuronsThreshold:5
+maxNeuronsAmount:1000000
+excessGenesCoefficient:2
+disjointGenesCoefficient:2
+matchingGenesCoefficient:0.4
+sameSpeciesThreshold:1
+maxStaleness:15
+tournamentSize:3
+weightLimit:2
+responseLimit:2
+addLink:0.07
+INNOVATION LIST
+neuron_counter:83
+innovation_counter:83
+NEURON INNOVATION
+id:6
+from:1
+to:4
+NEURON INNOVATION
+id:7
+from:1
+to:4
+NEURON INNOVATION
+id:9
+from:1
+to:6
+NEURON INNOVATION
+id:12
+from:1
+to:9
+NEURON INNOVATION
+id:18
+from:1
+to:7
+NEURON INNOVATION
+id:23
+from:1
+to:12
+NEURON INNOVATION
+id:25
+from:1
+to:4
+NEURON INNOVATION
+id:28
+from:1
+to:6
+NEURON INNOVATION
+id:29
+from:1
+to:4
+NEURON INNOVATION
+id:32
+from:1
+to:4
+NEURON INNOVATION
+id:33
+from:1
+to:6
+NEURON INNOVATION
+id:34
+from:1
+to:6
+NEURON INNOVATION
+id:35
+from:1
+to:6
+NEURON INNOVATION
+id:36
+from:1
+to:6
+NEURON INNOVATION
+id:39
+from:1
+to:6
+NEURON INNOVATION
+id:40
+from:1
+to:6
+NEURON INNOVATION
+id:41
+from:1
+to:6
+NEURON INNOVATION
+id:42
+from:1
+to:6
+NEURON INNOVATION
+id:45
+from:1
+to:6
+NEURON INNOVATION
+id:46
+from:1
+to:4
+NEURON INNOVATION
+id:50
+from:1
+to:6
+NEURON INNOVATION
+id:52
+from:1
+to:6
+NEURON INNOVATION
+id:54
+from:1
+to:6
+NEURON INNOVATION
+id:55
+from:1
+to:11
+NEURON INNOVATION
+id:57
+from:1
+to:6
+NEURON INNOVATION
+id:58
+from:1
+to:4
+NEURON INNOVATION
+id:60
+from:1
+to:6
+NEURON INNOVATION
+id:61
+from:1
+to:4
+NEURON INNOVATION
+id:62
+from:1
+to:6
+NEURON INNOVATION
+id:63
+from:1
+to:6
+NEURON INNOVATION
+id:64
+from:1
+to:6
+NEURON INNOVATION
+id:65
+from:1
+to:58
+NEURON INNOVATION
+id:66
+from:1
+to:4
+NEURON INNOVATION
+id:67
+from:1
+to:6
+NEURON INNOVATION
+id:68
+from:1
+to:6
+NEURON INNOVATION
+id:71
+from:1
+to:4
+NEURON INNOVATION
+id:72
+from:1
+to:4
+NEURON INNOVATION
+id:73
+from:1
+to:4
+NEURON INNOVATION
+id:75
+from:1
+to:4
+NEURON INNOVATION
+id:76
+from:1
+to:4
+NEURON INNOVATION
+id:78
+from:1
+to:6
+NEURON INNOVATION
+id:80
+from:1
+to:6
+NEURON INNOVATION
+id:81
+from:1
+to:6
+NEURON INNOVATION
+id:82
+from:1
+to:6
+NEURON INNOVATION
+id:5
+from:2
+to:4
+NEURON INNOVATION
+id:8
+from:2
+to:5
+NEURON INNOVATION
+id:13
+from:2
+to:6
+NEURON INNOVATION
+id:16
+from:2
+to:9
+NEURON INNOVATION
+id:56
+from:2
+to:4
+NEURON INNOVATION
+id:69
+from:2
+to:11
+NEURON INNOVATION
+id:74
+from:2
+to:4
+NEURON INNOVATION
+id:77
+from:2
+to:4
+NEURON INNOVATION
+id:26
+from:3
+to:4
+LINK INNOVATION
+innovation:1
+from:1
+to:4
+LINK INNOVATION
+innovation:6
+from:1
+to:6
+LINK INNOVATION
+innovation:13
+from:1
+to:7
+LINK INNOVATION
+innovation:17
+from:1
+to:9
+LINK INNOVATION
+innovation:30
+from:1
+to:12
+LINK INNOVATION
+innovation:49
+from:1
+to:11
+LINK INNOVATION
+innovation:52
+from:1
+to:5
+LINK INNOVATION
+innovation:57
+from:1
+to:18
+LINK INNOVATION
+innovation:76
+from:1
+to:23
+LINK INNOVATION
+innovation:86
+from:1
+to:25
+LINK INNOVATION
+innovation:94
+from:1
+to:28
+LINK INNOVATION
+innovation:96
+from:1
+to:29
+LINK INNOVATION
+innovation:106
+from:1
+to:19
+LINK INNOVATION
+innovation:108
+from:1
+to:32
+LINK INNOVATION
+innovation:110
+from:1
+to:33
+LINK INNOVATION
+innovation:113
+from:1
+to:34
+LINK INNOVATION
+innovation:115
+from:1
+to:35
+LINK INNOVATION
+innovation:117
+from:1
+to:36
+LINK INNOVATION
+innovation:124
+from:1
+to:39
+LINK INNOVATION
+innovation:126
+from:1
+to:40
+LINK INNOVATION
+innovation:128
+from:1
+to:41
+LINK INNOVATION
+innovation:130
+from:1
+to:42
+LINK INNOVATION
+innovation:137
+from:1
+to:45
+LINK INNOVATION
+innovation:140
+from:1
+to:46
+LINK INNOVATION
+innovation:148
+from:1
+to:50
+LINK INNOVATION
+innovation:152
+from:1
+to:52
+LINK INNOVATION
+innovation:156
+from:1
+to:54
+LINK INNOVATION
+innovation:158
+from:1
+to:55
+LINK INNOVATION
+innovation:162
+from:1
+to:57
+LINK INNOVATION
+innovation:164
+from:1
+to:58
+LINK INNOVATION
+innovation:168
+from:1
+to:60
+LINK INNOVATION
+innovation:170
+from:1
+to:61
+LINK INNOVATION
+innovation:173
+from:1
+to:62
+LINK INNOVATION
+innovation:175
+from:1
+to:63
+LINK INNOVATION
+innovation:177
+from:1
+to:64
+LINK INNOVATION
+innovation:181
+from:1
+to:65
+LINK INNOVATION
+innovation:184
+from:1
+to:66
+LINK INNOVATION
+innovation:187
+from:1
+to:67
+LINK INNOVATION
+innovation:189
+from:1
+to:68
+LINK INNOVATION
+innovation:195
+from:1
+to:71
+LINK INNOVATION
+innovation:197
+from:1
+to:72
+LINK INNOVATION
+innovation:199
+from:1
+to:73
+LINK INNOVATION
+innovation:203
+from:1
+to:75
+LINK INNOVATION
+innovation:205
+from:1
+to:76
+LINK INNOVATION
+innovation:209
+from:1
+to:78
+LINK INNOVATION
+innovation:213
+from:1
+to:80
+LINK INNOVATION
+innovation:215
+from:1
+to:81
+LINK INNOVATION
+innovation:217
+from:1
+to:82
+LINK INNOVATION
+innovation:2
+from:2
+to:4
+LINK INNOVATION
+innovation:4
+from:2
+to:5
+LINK INNOVATION
+innovation:9
+from:2
+to:6
+LINK INNOVATION
+innovation:15
+from:2
+to:8
+LINK INNOVATION
+innovation:32
+from:2
+to:9
+LINK INNOVATION
+innovation:34
+from:2
+to:13
+LINK INNOVATION
+innovation:39
+from:2
+to:11
+LINK INNOVATION
+innovation:50
+from:2
+to:16
+LINK INNOVATION
+innovation:68
+from:2
+to:19
+LINK INNOVATION
+innovation:72
+from:2
+to:17
+LINK INNOVATION
+innovation:160
+from:2
+to:56
+LINK INNOVATION
+innovation:191
+from:2
+to:69
+LINK INNOVATION
+innovation:201
+from:2
+to:74
+LINK INNOVATION
+innovation:207
+from:2
+to:77
+LINK INNOVATION
+innovation:3
+from:3
+to:4
+LINK INNOVATION
+innovation:10
+from:3
+to:6
+LINK INNOVATION
+innovation:21
+from:3
+to:5
+LINK INNOVATION
+innovation:38
+from:3
+to:9
+LINK INNOVATION
+innovation:41
+from:3
+to:11
+LINK INNOVATION
+innovation:44
+from:3
+to:7
+LINK INNOVATION
+innovation:64
+from:3
+to:19
+LINK INNOVATION
+innovation:89
+from:3
+to:26
+LINK INNOVATION
+innovation:107
+from:3
+to:12
+LINK INNOVATION
+innovation:8
+from:4
+to:4
+LINK INNOVATION
+innovation:11
+from:4
+to:6
+LINK INNOVATION
+innovation:20
+from:4
+to:5
+LINK INNOVATION
+innovation:25
+from:4
+to:9
+LINK INNOVATION
+innovation:26
+from:4
+to:7
+LINK INNOVATION
+innovation:36
+from:4
+to:13
+LINK INNOVATION
+innovation:59
+from:4
+to:11
+LINK INNOVATION
+innovation:65
+from:4
+to:19
+LINK INNOVATION
+innovation:83
+from:4
+to:12
+LINK INNOVATION
+innovation:179
+from:4
+to:58
+LINK INNOVATION
+innovation:5
+from:5
+to:4
+LINK INNOVATION
+innovation:12
+from:5
+to:5
+LINK INNOVATION
+innovation:22
+from:5
+to:10
+LINK INNOVATION
+innovation:48
+from:5
+to:6
+LINK INNOVATION
+innovation:71
+from:5
+to:9
+LINK INNOVATION
+innovation:78
+from:5
+to:11
+LINK INNOVATION
+innovation:119
+from:5
+to:16
+LINK INNOVATION
+innovation:136
+from:5
+to:12
+LINK INNOVATION
+innovation:7
+from:6
+to:4
+LINK INNOVATION
+innovation:19
+from:6
+to:6
+LINK INNOVATION
+innovation:27
+from:6
+to:11
+LINK INNOVATION
+innovation:33
+from:6
+to:5
+LINK INNOVATION
+innovation:37
+from:6
+to:7
+LINK INNOVATION
+innovation:45
+from:6
+to:9
+LINK INNOVATION
+innovation:56
+from:6
+to:14
+LINK INNOVATION
+innovation:60
+from:6
+to:19
+LINK INNOVATION
+innovation:62
+from:6
+to:20
+LINK INNOVATION
+innovation:85
+from:6
+to:12
+LINK INNOVATION
+innovation:91
+from:6
+to:27
+LINK INNOVATION
+innovation:120
+from:6
+to:37
+LINK INNOVATION
+innovation:122
+from:6
+to:38
+LINK INNOVATION
+innovation:132
+from:6
+to:43
+LINK INNOVATION
+innovation:134
+from:6
+to:44
+LINK INNOVATION
+innovation:144
+from:6
+to:48
+LINK INNOVATION
+innovation:146
+from:6
+to:49
+LINK INNOVATION
+innovation:154
+from:6
+to:53
+LINK INNOVATION
+innovation:166
+from:6
+to:59
+LINK INNOVATION
+innovation:186
+from:6
+to:66
+LINK INNOVATION
+innovation:193
+from:6
+to:70
+LINK INNOVATION
+innovation:211
+from:6
+to:79
+LINK INNOVATION
+innovation:219
+from:6
+to:83
+LINK INNOVATION
+innovation:14
+from:7
+to:4
+LINK INNOVATION
+innovation:29
+from:7
+to:7
+LINK INNOVATION
+innovation:46
+from:7
+to:15
+LINK INNOVATION
+innovation:79
+from:7
+to:6
+LINK INNOVATION
+innovation:84
+from:7
+to:9
+LINK INNOVATION
+innovation:103
+from:7
+to:31
+LINK INNOVATION
+innovation:112
+from:7
+to:12
+LINK INNOVATION
+innovation:16
+from:8
+to:5
+LINK INNOVATION
+innovation:18
+from:9
+to:6
+LINK INNOVATION
+innovation:24
+from:9
+to:9
+LINK INNOVATION
+innovation:40
+from:9
+to:4
+LINK INNOVATION
+innovation:54
+from:9
+to:17
+LINK INNOVATION
+innovation:67
+from:9
+to:7
+LINK INNOVATION
+innovation:69
+from:9
+to:21
+LINK INNOVATION
+innovation:80
+from:9
+to:5
+LINK INNOVATION
+innovation:99
+from:9
+to:12
+LINK INNOVATION
+innovation:101
+from:9
+to:30
+LINK INNOVATION
+innovation:142
+from:9
+to:47
+LINK INNOVATION
+innovation:150
+from:9
+to:51
+LINK INNOVATION
+innovation:23
+from:10
+to:4
+LINK INNOVATION
+innovation:28
+from:11
+to:4
+LINK INNOVATION
+innovation:42
+from:11
+to:14
+LINK INNOVATION
+innovation:53
+from:11
+to:6
+LINK INNOVATION
+innovation:73
+from:11
+to:19
+LINK INNOVATION
+innovation:183
+from:11
+to:58
+LINK INNOVATION
+innovation:31
+from:12
+to:9
+LINK INNOVATION
+innovation:81
+from:12
+to:24
+LINK INNOVATION
+innovation:93
+from:12
+to:4
+LINK INNOVATION
+innovation:98
+from:12
+to:7
+LINK INNOVATION
+innovation:105
+from:12
+to:6
+LINK INNOVATION
+innovation:35
+from:13
+to:6
+LINK INNOVATION
+innovation:43
+from:14
+to:4
+LINK INNOVATION
+innovation:180
+from:14
+to:58
+LINK INNOVATION
+innovation:47
+from:15
+to:4
+LINK INNOVATION
+innovation:51
+from:16
+to:9
+LINK INNOVATION
+innovation:55
+from:17
+to:6
+LINK INNOVATION
+innovation:58
+from:18
+to:7
+LINK INNOVATION
+innovation:61
+from:19
+to:11
+LINK INNOVATION
+innovation:66
+from:19
+to:4
+LINK INNOVATION
+innovation:74
+from:19
+to:22
+LINK INNOVATION
+innovation:88
+from:19
+to:19
+LINK INNOVATION
+innovation:100
+from:19
+to:6
+LINK INNOVATION
+innovation:63
+from:20
+to:11
+LINK INNOVATION
+innovation:70
+from:21
+to:4
+LINK INNOVATION
+innovation:75
+from:22
+to:11
+LINK INNOVATION
+innovation:77
+from:23
+to:12
+LINK INNOVATION
+innovation:82
+from:24
+to:9
+LINK INNOVATION
+innovation:87
+from:25
+to:4
+LINK INNOVATION
+innovation:90
+from:26
+to:4
+LINK INNOVATION
+innovation:92
+from:27
+to:19
+LINK INNOVATION
+innovation:139
+from:27
+to:6
+LINK INNOVATION
+innovation:95
+from:28
+to:6
+LINK INNOVATION
+innovation:97
+from:29
+to:4
+LINK INNOVATION
+innovation:102
+from:30
+to:7
+LINK INNOVATION
+innovation:104
+from:31
+to:6
+LINK INNOVATION
+innovation:109
+from:32
+to:4
+LINK INNOVATION
+innovation:111
+from:33
+to:6
+LINK INNOVATION
+innovation:114
+from:34
+to:6
+LINK INNOVATION
+innovation:116
+from:35
+to:6
+LINK INNOVATION
+innovation:118
+from:36
+to:6
+LINK INNOVATION
+innovation:121
+from:37
+to:11
+LINK INNOVATION
+innovation:123
+from:38
+to:11
+LINK INNOVATION
+innovation:125
+from:39
+to:6
+LINK INNOVATION
+innovation:127
+from:40
+to:6
+LINK INNOVATION
+innovation:129
+from:41
+to:6
+LINK INNOVATION
+innovation:131
+from:42
+to:6
+LINK INNOVATION
+innovation:133
+from:43
+to:11
+LINK INNOVATION
+innovation:135
+from:44
+to:11
+LINK INNOVATION
+innovation:138
+from:45
+to:6
+LINK INNOVATION
+innovation:141
+from:46
+to:4
+LINK INNOVATION
+innovation:143
+from:47
+to:17
+LINK INNOVATION
+innovation:145
+from:48
+to:4
+LINK INNOVATION
+innovation:147
+from:49
+to:4
+LINK INNOVATION
+innovation:149
+from:50
+to:6
+LINK INNOVATION
+innovation:151
+from:51
+to:6
+LINK INNOVATION
+innovation:153
+from:52
+to:6
+LINK INNOVATION
+innovation:155
+from:53
+to:4
+LINK INNOVATION
+innovation:157
+from:54
+to:6
+LINK INNOVATION
+innovation:159
+from:55
+to:11
+LINK INNOVATION
+innovation:161
+from:56
+to:4
+LINK INNOVATION
+innovation:163
+from:57
+to:6
+LINK INNOVATION
+innovation:165
+from:58
+to:4
+LINK INNOVATION
+innovation:172
+from:58
+to:11
+LINK INNOVATION
+innovation:167
+from:59
+to:4
+LINK INNOVATION
+innovation:169
+from:60
+to:6
+LINK INNOVATION
+innovation:171
+from:61
+to:4
+LINK INNOVATION
+innovation:174
+from:62
+to:6
+LINK INNOVATION
+innovation:176
+from:63
+to:6
+LINK INNOVATION
+innovation:178
+from:64
+to:6
+LINK INNOVATION
+innovation:182
+from:65
+to:58
+LINK INNOVATION
+innovation:185
+from:66
+to:4
+LINK INNOVATION
+innovation:188
+from:67
+to:6
+LINK INNOVATION
+innovation:190
+from:68
+to:6
+LINK INNOVATION
+innovation:192
+from:69
+to:11
+LINK INNOVATION
+innovation:194
+from:70
+to:11
+LINK INNOVATION
+innovation:196
+from:71
+to:4
+LINK INNOVATION
+innovation:198
+from:72
+to:4
+LINK INNOVATION
+innovation:200
+from:73
+to:4
+LINK INNOVATION
+innovation:202
+from:74
+to:4
+LINK INNOVATION
+innovation:204
+from:75
+to:4
+LINK INNOVATION
+innovation:206
+from:76
+to:4
+LINK INNOVATION
+innovation:208
+from:77
+to:4
+LINK INNOVATION
+innovation:210
+from:78
+to:6
+LINK INNOVATION
+innovation:212
+from:79
+to:4
+LINK INNOVATION
+innovation:214
+from:80
+to:6
+LINK INNOVATION
+innovation:216
+from:81
+to:6
+LINK INNOVATION
+innovation:218
+from:82
+to:6
+LINK INNOVATION
+innovation:220
+from:83
+to:11
+SPECIES
+best_fitness_yet:0.99996763843468
+average_fitness:0
+staleness:1
+spawn_amount:25.506257171047
+id:3
+SPECIES
+best_fitness_yet:0.99999194697917
+average_fitness:0
+staleness:0
+spawn_amount:25.377543788285
+id:4
+SPECIES
+best_fitness_yet:0.99999890717901
+average_fitness:0
+staleness:0
+spawn_amount:24.550240308948
+id:8
+SPECIES
+best_fitness_yet:0.99999974680846
+average_fitness:0
+staleness:2
+spawn_amount:24.565958731719
+id:9
