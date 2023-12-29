@@ -16,11 +16,15 @@ local snake_demo = {
 }
 
 -- initializing LuaNEAT
-local population_size = 100
+local population_size = 300
 local num_inputs = 24
 local num_outputs = 4
 local neat_pool = neat.newPool(population_size, num_inputs, num_outputs, true) -- the nets wont have bias neurons
 local neural_nets_list = {}
+
+neat_pool:setInitialHiddenLayers(15, 15)
+neat_pool.parameters.addLink = 0
+neat_pool.parameters.addNode = 0
 
 -- some math functions
 local function map(value, x0, x1, y1, y2)
@@ -273,42 +277,6 @@ function snake_demo.update(dt)
     if down then direction = "down" end
     if left then direction = "left" end
     if right then direction = "right" end
-
-    --[[local move_forward = outputs[1] > outputs[2] and outputs[1] > outputs[3]
-    local move_left = outputs[2] > outputs[1] and outputs[2] > outputs[3]
-    local move_right = outputs[3] > outputs[1] and outputs[3] > outputs[2]
-
-    -- snake's heading
-    local dx, dy = sx-snake.body[2][1], sy-snake.body[2][2]
-    if dx==0 and dy==-1 then
-      -- going up
-      if move_left then
-        direction = "left"
-      elseif move_right then
-        direction = "right"
-      end
-    elseif dx==-1 and dy==0 then
-      -- going left
-      if move_left then
-        direction = "down"
-      elseif move_right then
-        direction = "up"
-      end
-    elseif dx==0 and dy==1 then
-      -- going down
-      if move_left then
-        direction = "right"
-      elseif move_right then
-        direction = "left"
-      end
-    elseif dx==1 and dy==0 then
-      -- going right
-      if move_left then
-        direction = "up"
-      elseif move_right then
-        direction = "down"
-      end
-    end]]
   end
 
   ----------------
@@ -474,7 +442,7 @@ function snake_demo.draw()
   local net = neural_nets_list[snake.evaluating_brain]
   local width = snake_demo.game_window*2/3 - margin
   local height = snake_demo.game_window - margin
-  net:draw(snake_demo.game_window + margin, margin + height/4, width, height/2 - 50)
+  net:draw(snake_demo.game_window + margin, margin, width, height - 50)
 end
 
 

@@ -281,7 +281,7 @@ function TheGrid.update(dt)
       -- inputting the neural network
       if nearest then
         local inputs = {
-          --distance(creature, nearest)/creatures.sensorLength,
+          distance(creature, nearest)/creatures.sensorLength,
           --getQuadrantAngle(creature)/math.pi,
           map(getAngle(creature, nearest), -math.pi, math.pi, -1, 1),
           --dx,

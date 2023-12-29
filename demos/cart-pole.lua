@@ -34,7 +34,7 @@ local objects = {}
 local mode="cart"
 
 -- neat
-local pool = neat.newPool(100, 4, 1, false)--4, 2)
+local pool = neat.newPool(150, 4, 1, false)--4, 2)
 pool:initialize()
 local networks = pool:getNeuralNetworks()
 local evaluating = 1

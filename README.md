@@ -1,11 +1,9 @@
 # LuaNEAT
 
-LuaNEAT is a Lua implementation of the NeuroEvolution of Augmenting Topologies algorithm
+LuaNEAT is a Lua implementation of the NEAT algorithm. LuaNEAT was designed with Love2D in mind but works in vanilla Lua.
 
 # What is NEAT?
-
-Developed by Kenneth Stanley and Risto Miikkulainen, NEAT is an algorithm for evolving
-neural networks topologies along with their weights.
+NEAT (NeuroEvolution of Augmenting Topologies) is an algorithm developed by Kenneth Stanley and Risto Miikkulainen for evolving neural networks topologies along with the weights of its connections. This implementation of NEAT is based on sethbling's MarI/O and the one from the book 'AI Techniques for Game Programming' by Mat Buckland. Read the original paper for more information on NEAT: https://nn.cs.utexas.edu/downloads/papers/stanley.ec02.pdf
 
 # Getting started
 
@@ -20,15 +18,15 @@ local LuaNEAT = require"LuaNEAT"
 --- initalization ---
 ---------------------
 
-size = 150         -- the number of neural networks to be tested at each generation
-num_inputs = 3     -- number of inputs of the neural nets
-num_outputs = 2    -- number of outputs of the neural nets
-bias = true        -- whether the neural nets will have a bias neuron or not
+size = 150             -- the number of neural networks to be tested at each generation
+num_inputs = 3         -- number of inputs of the neural nets
+num_outputs = 2        -- number of outputs of the neural nets
+force_no_bias = true   -- whether the neural nets will have a bias neuron or not
 
 -- creating the pool:
 -- keep in mind that LuaNEAT generates neural nets with a bias neuron by default (an extra input neuron whose value is always 1)
 -- you can disable it by ignoring the bias argumenting when creating the pool
-pool = LuaNEAT.newPool(size, num_inputs, num_outputs, bias)
+pool = LuaNEAT.newPool(size, num_inputs, num_outputs, force_no_bias)
 
 -- initializing the pool:
 pool:initialize()

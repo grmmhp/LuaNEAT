@@ -32,28 +32,16 @@ local LuaNEAT = {
 LuaNEAT.random = love.math.random or math.random
 
 --TODO:
--- remove inability to link two output neurons
+-- check alter response
+-- remove inability to link two output neurons (?)
 -- remove species:adjustFitnesses()
 -- assign species reference to genomes
--- write activation functions
+-- write other activation functions
 -- pass activation function to neural net
 
 --at the end of development:
 -- remove activation from NeuronGene
--- remove math.randomseed()
--- check if always using LuaNEAT.random()
 
---KNOWN ISSUES:
--- species leaders fitness is not being reset from the previous generation
-
-
-
---PUBLIC FUNCTIONS
--- NeuralNetwork:incrementFitness(value)
--- NeuralNetwork:getFitness()
--- NeuralNetwork:setFitness(fitness)
--- Pool:getBestFitness
--- Pool:getGeneration()
 
 --------------------------------
 --         PARAMETERS         --
@@ -129,11 +117,11 @@ local activations = {
   end,
 
   ["sine"] = function(x,p)
-    return 1
+    return math.sin(x*p)
   end,
 
   ["ReLU"] = function(x,p)
-    return 1--math.max(0, math.min(x, 1))
+    return math.max(0, math.min(x, 1))
   end,
 }
 
@@ -216,7 +204,7 @@ function Genome.minimal(id, inputs, outputs, parameters, noBias)
   return genome
 end
 
-function Genome._DEBUG_CREATE_FEEDFORWARD_GENOME(id, inputs, outputs, parameters, noBias)
+function Genome.layered(id, inputs, outputs, hidden_layers, parameters, noBias)
   -- creates a traditional feedforward neural network genome with a given number of inputs and outputs;
   -- hidden_layers is an array containg the number of neurons per hidden layer in a total of #hidden_layers layers
   -- where every neuron in a layer is connected to every neuron in the previous layer
@@ -250,17 +238,9 @@ function Genome._DEBUG_CREATE_FEEDFORWARD_GENOME(id, inputs, outputs, parameters
   for n=1,outputs do
     local gene = NeuronGene(inputs+n, "output", parameters.defaultActivation, false, parameters.defaultResponse, n*dx, 0)
     table.insert(neuron_list, gene)
-
-    -- creating links
-    --[[for k=1,inputs do
-      local innovation = k + (inputs)*(n-1)
-      local link = LinkGene(innovation, 0, k, inputs+n, true, false)--innovation, weight, from, to, enabled, recurrent
-      link:randomWeight(parameters.initialWeightRange)
-
-      table.insert(link_list, link)
-    end]]
   end
-  local layers = _DEBUG_HIDDEN_LAYERS
+
+  local layers = hidden_layers
   local function totalNumHiddenNeurons()
     local count = 0
 
@@ -303,7 +283,7 @@ function Genome._DEBUG_CREATE_FEEDFORWARD_GENOME(id, inputs, outputs, parameters
       else
         for j=1, layers[l-1] do
           local num_so_far = numNeuronsBeforeLayer(l-1)
-          print("neuron ".. j .. " from layer ".. l .. " with a total of ".. layers[l].. "neurons; total num of neurons before this layer is ".. num_so_far)
+          --print("neuron ".. j .. " from layer ".. l .. " with a total of ".. layers[l].. "neurons; total num of neurons before this layer is ".. num_so_far)
           local link =  LinkGene(innovation_counter, 0, num_so_far+outputs+j, hidden_neurons_id_counter, true, false)--innovation, weight, from, to, enabled, recurrent
           link:randomWeight(parameters.initialWeightRange)
           table.insert(link_list, link)
@@ -987,8 +967,8 @@ setmetatable(NeuronGene, {__call = function(t, id, neuron_type, activation, recu
   end
 })
 
-function NeuronGene:alterResponse(responseStep)
-  self.response = LuaNEAT.random()*2*responseStep - responseStep
+function NeuronGene:alterResponse(step)
+  self.response = step*(LuaNEAT.random()*2 - 1)
 end
 
 function NeuronGene:copy()
@@ -1023,9 +1003,9 @@ setmetatable(LinkGene, {
   end
 })
 
-function LinkGene:randomWeight(limit)----------------------------------------------------------------------------------------------------------------------------
-  limit = limit or 1
-  self.weight = LuaNEAT.random()*2*limit - limit
+function LinkGene:randomWeight(range)
+  range = range or 1
+  self.weight = range*(LuaNEAT.random()*2 - 1)
 end
 
 function LinkGene:copy()
@@ -1056,18 +1036,64 @@ setmetatable(InnovationList, {
   end
 })
 
-function InnovationList:initialize(inputs, outputs, noBias)
+function InnovationList:initialize(inputs, outputs, noBias, hidden_layers)
   if not noBias then
     inputs = inputs + 1
   end
 
-  for o=1,outputs do
-    for i=1,inputs do
-      self:newLink(i, inputs+o)
+  local hidden = 0
+
+  if #hidden_layers==0 then
+    for o=1,outputs do
+      for i=1,inputs do
+        self:newLink(i, inputs+o)
+      end
+    end
+  else
+    local hidden_neurons_id_counter = inputs+outputs+1
+
+    for n=1,#hidden_layers do
+      hidden = hidden + hidden_layers[n]
+    end
+
+    local function numNeuronsBeforeLayer(j)
+      if j==1 then return inputs end
+
+      local count = inputs
+
+      for n=1, j-1 do
+        count = count+hidden_layers[n]
+      end
+
+      return count
+    end
+
+    for l=1, #hidden_layers do
+      for n=1, hidden_layers[l] do
+        if l==1 then
+          for j=1, inputs do
+            self:newLink(j, hidden_neurons_id_counter)--innovation, weight, from, to, enabled, recurrent
+          end
+        else
+          for j=1, hidden_layers[l-1] do
+            local num_so_far = numNeuronsBeforeLayer(l-1)
+            self:newLink(num_so_far+outputs+j, hidden_neurons_id_counter)--innovation, weight, from, to, enabled, recurrent
+          end
+        end
+
+        hidden_neurons_id_counter = hidden_neurons_id_counter + 1
+      end
+    end
+
+    local num_so_far = numNeuronsBeforeLayer(#hidden_layers)
+    for n=1,outputs do
+      for k=1,hidden_layers[#hidden_layers] do
+        self:newLink(num_so_far+outputs+k, inputs+n)--innovation, weight, from, to, enabled, recurrent
+      end
     end
   end
 
-  self.neuron_counter = inputs+outputs
+  self.neuron_counter = inputs+outputs+hidden
 end
 
 function InnovationList:newNeuron(from, to)
@@ -1439,6 +1465,7 @@ setmetatable(Pool, {
     o.size = size
     o.inputs = inputs
     o.outputs = outputs
+    o.hidden_layers = {}
     o.noBias = noBias or false
     o.species = {}
     o.nets = {}
@@ -1447,7 +1474,7 @@ setmetatable(Pool, {
     o.generation = -1
     o.genome_counter = 0
     o.species_counter = 0
-    o.report_statistics = true
+    o.collect_stats = true
     o.statistics = Statistics()
     o.innovation_list = InnovationList()
     o.parameters = {}
@@ -1460,186 +1487,6 @@ setmetatable(Pool, {
     return setmetatable(o, Pool.mt)
   end
 })
-
-function Pool:initialize()
-  if self.generation ~= -1 then error("pool has already been initialized", 2) end
-  self.innovation_list:initialize(self.inputs, self.outputs, self.noBias)
-
-  for n=1, self.size do
-    self.genome_counter = self.genome_counter + 1
-    local id = self.genome_counter
-    --local genome = Genome.minimal(id, self.inputs, self.outputs, self.parameters, self.noBias)
-    local genome
-    if _DEBUG_TRADITIONAL_FEEDFORWARD_MODE then
-      genome = Genome._DEBUG_CREATE_FEEDFORWARD_GENOME(id, self.inputs, self.outputs, self.parameters, self.noBias) ---------------------------------------- REMOOOOOOOOOOOOOOOOOOOVE
-    else
-      genome = Genome.minimal(id, self.inputs, self.outputs, self.parameters, self.noBias)
-    end
-
-    table.insert(self.nets, genome:buildNeuralNetwork())
-    self:speciate(genome)
-  end
-
-  self.generation = 1
-end
-
-function Pool:nextGeneration()
-  -- deleting previously created neural nets
-  self.nets = {}
-  -- stats
-  local avg_fitness = 0
-  local fitnesses = {} -- inserting all fitnesses to a table so we can sort it and get the median fitness
-
-  -- getting fitness stats
-  ------------------------------------------------------------------------------------------------------------------------------------------print("fitnesses")
-  if self.report_statistics then
-    for s=1,#self.species do
-      for g=1,#self.species[s].genomes do
-        avg_fitness = avg_fitness + self.species[s].genomes[g].fitness
-        table.insert(fitnesses, self.species[s].genomes[g].fitness)
-        -------------------------------------------------------------------------------------------------------------------------print(self.species[s].genomes[g].fitness)
-      end
-    end
-    avg_fitness = avg_fitness/self.size
-  end
-  -----------------------------------------------------------------------------------------------------------------------------------------print()
-
-  local species_amount = #self.species
-  local weak_removed, stale_removed
-
-  self:cullSpecies()
-  self:removeStaleSpecies(); stale_removed = species_amount - #self.species;    species_amount=#self.species
-  self:calculateSpawnLevels()
-  self:removeWeakSpecies(); weak_removed = species_amount - #self.species
-
-  -- spawning offspring
-  local spawn = {}
-
-  for n=1, #self.species do
-    local species = self.species[n]
-
-    for n = 1, math.floor(species.spawn_amount)-1 do
-      self.genome_counter = self.genome_counter + 1
-      local offspring = species:breed(self.genome_counter, self.parameters, self.innovation_list)
-      table.insert(spawn, offspring)
-    end
-  end
-
-  while (#self.species + #spawn) < self.size do
-    local species = self:getRandomSpecies()
-    self.genome_counter = self.genome_counter + 1
-    local offspring = species:breed(self.genome_counter, self.parameters, self.innovation_list)
-
-    table.insert(spawn, offspring)
-  end
-
-  -- deleting all genomes except for the best performing one in each species
-  self:cullSpecies(true)
-
-  -- setting the new species' leader as its best genome (genomes are always ranked after culling)
-  -- and getting the best genome from last generation
-  local best = self.species[1].genomes[1]
-  for n=1,#self.species do
-    local leader = self.species[n].genomes[1]
-    self.species[n].leader = leader
-
-    if leader.fitness > best.fitness then
-      best = leader
-    end
-  end
-  self.last_best = best
-  self.top_fitness = best.fitness
-
-  -- saving new stats
-  if self.report_statistics then
-    local med_fitness
-
-    table.sort(fitnesses)
-    if math.fmod(#fitnesses,2) == 0 then
-      med_fitness = (fitnesses[#fitnesses/2] + fitnesses[(#fitnesses/2)+1]) / 2
-    else
-      med_fitness = fitnesses[math.ceil(#fitnesses/2)]
-    end
-
-    self.statistics:new(self.top_fitness, avg_fitness, med_fitness)
-  end
-
-  -- speciating the offsprings
-  for n=1, #spawn do
-    self:speciate(spawn[n])
-  end
-
-  -- building the neural nets
-  for n=1,#self.species do
-    -- reseting all leaders' fitness
-    self.species[n].genomes[1].fitness=0--leader.fitness = 0
-
-    for k=1,#self.species[n].genomes do
-      local genome = self.species[n].genomes[k]
-      table.insert(self.nets, genome:buildNeuralNetwork())
-    end
-  end
-  ---------------------------------------------------------------------------print()
-
-  self.generation = self.generation + 1
-
-  return "Generation ".. self.generation-1 .. ":\n".. weak_removed .. " weak species removed\n".. stale_removed .. " stale species removed"
-end
-
-function Pool:_DEBUG_SIMPLE_NEXT_GENERATION()
-  local children = {}
-  local nets = {}
-  local sp = self.species[1]
-
-  table.sort(sp.genomes,
-    function(a,b)
-      return a.fitness > b.fitness
-    end
-  )
-
-  local ELITISM_AMOUNT = .1
-
-  -- removing the worst genomes
-  local half = math.floor(self.size/2)
-  while #sp.genomes > half do
-    table.remove(sp.genomes)
-  end
-
-  --for n=1, self.size do
-  --  oldprint(sp.genomes[n].fitness)
-  --end
-
-  self.top_fitness = sp.genomes[1].fitness
-
-  for k=1, math.floor(self.size*ELITISM_AMOUNT) do
-    print(#sp.genomes)
-    sp.genomes[k].fitness = 0
-    table.insert(children, sp.genomes[k])
-    local net = sp.genomes[k]:buildNeuralNetwork()
-    net.genome = sp.genomes[k]
-    table.insert(nets, net)
-  end
-
-
-  for n=1, self.size-math.ceil(self.size*ELITISM_AMOUNT) do
-    self.genome_counter = self.genome_counter + 1
-    local child = sp:breed(self.genome_counter, self.parameters, self.innovation_list)
-    child:mutate(self.parameters, self.innovation_list)
-    child.species = sp
-    local net = child:buildNeuralNetwork()
-    net.genome = child
-
-    table.insert(children, child)
-    table.insert(nets, net)
-  end
-
-  sp.genomes = children
-  self.nets = nets
-
-  oldprint("top fitness from generation ".. self.generation .. " was ".. self.top_fitness)
-
-  self.generation = self.generation + 1
-end
 
 function Pool:speciate(genome)
   -- inserts the genome into a compatible species
@@ -1757,6 +1604,154 @@ end
 
 -- Pool's public methods --
 
+function Pool:setInitialHiddenLayers(...)
+  local layers = {...}
+
+  if type(layers[1]) == "table" then
+    layers = layers[1]
+  end
+
+  self.hidden_layers = layers
+end
+
+-- initializes the pool
+function Pool:initialize()
+  if self.generation ~= -1 then error("pool has already been initialized", 2) end
+  self.innovation_list:initialize(self.inputs, self.outputs, self.noBias, self.hidden_layers)
+
+  for n=1, self.size do
+    self.genome_counter = self.genome_counter + 1
+
+    local id = self.genome_counter
+    local genome
+
+    if #self.hidden_layers == 0 then
+      genome = Genome.minimal(id, self.inputs, self.outputs, self.parameters, self.noBias)
+    else
+      genome = Genome.layered(id, self.inputs, self.outputs, self.hidden_layers, self.parameters, self.noBias)
+    end
+
+    table.insert(self.nets, genome:buildNeuralNetwork())
+    self:speciate(genome)
+  end
+
+  self.generation = 1
+end
+
+-- creates the next generation
+function Pool:nextGeneration()
+  -- deleting previously created neural nets
+  self.nets = {}
+  -- stats
+  local fitness_average = 0
+  local fitnesses = {} -- inserting all fitnesses to a table so we can sort it and get the median fitness
+
+  -- getting fitness stats
+  if self.collect_stats then
+    for s=1,#self.species do
+      for g=1,#self.species[s].genomes do
+        fitness_average = fitness_average + self.species[s].genomes[g].fitness
+        table.insert(fitnesses, self.species[s].genomes[g].fitness)
+      end
+    end
+    fitness_average = fitness_average/self.size
+  end
+
+  -- calculating variance
+  local fitness_variance = 0
+
+  if self.collect_stats then
+    for s=1,#self.species do
+      for g=1,#self.species[s].genomes do
+        fitness_variance = fitness_variance + (self.species[s].genomes[g].fitness - fitness_average)^2
+      end
+    end
+    fitness_variance = fitness_variance/self.size
+  end
+
+
+  -- removing stale and weak species and calculating the spawn levels of the surviving ones
+  local species_amount = #self.species
+  local weak_removed, stale_removed
+
+  self:cullSpecies()
+  self:removeStaleSpecies(); stale_removed = species_amount - #self.species;    species_amount=#self.species
+  self:calculateSpawnLevels()
+  self:removeWeakSpecies(); weak_removed = species_amount - #self.species
+
+  -- spawning offspring
+  local spawn = {}
+
+  for n=1, #self.species do
+    local species = self.species[n]
+
+    for n = 1, math.floor(species.spawn_amount)-1 do
+      self.genome_counter = self.genome_counter + 1
+      local offspring = species:breed(self.genome_counter, self.parameters, self.innovation_list)
+      table.insert(spawn, offspring)
+    end
+  end
+
+  while (#self.species + #spawn) < self.size do
+    local species = self:getRandomSpecies()
+    self.genome_counter = self.genome_counter + 1
+    local offspring = species:breed(self.genome_counter, self.parameters, self.innovation_list)
+
+    table.insert(spawn, offspring)
+  end
+
+  -- deleting all genomes except for the best performing one in each species
+  self:cullSpecies(true)
+
+  -- setting the new species' leader as its best genome (genomes are always ranked after culling)
+  -- and getting the best genome from last generation
+  local best = self.species[1].genomes[1]
+  for n=1,#self.species do
+    local leader = self.species[n].genomes[1]
+    self.species[n].leader = leader
+
+    if leader.fitness > best.fitness then
+      best = leader
+    end
+  end
+  self.last_best = best
+  self.top_fitness = best.fitness
+
+  -- saving new stats
+  if self.collect_stats then
+    local fitness_median
+
+    table.sort(fitnesses)
+    if math.fmod(#fitnesses,2) == 0 then
+      fitness_median = (fitnesses[#fitnesses/2] + fitnesses[(#fitnesses/2)+1]) / 2
+    else
+      fitness_median = fitnesses[math.ceil(#fitnesses/2)]
+    end
+
+    self.statistics:new(self.top_fitness, fitness_average, fitness_median, fitness_variance)
+  end
+
+  -- speciating the offsprings
+  for n=1, #spawn do
+    self:speciate(spawn[n])
+  end
+
+  -- building the neural nets
+  for n=1,#self.species do
+    -- reseting all leaders' fitness
+    self.species[n].genomes[1].fitness=0--leader.fitness = 0
+
+    for k=1,#self.species[n].genomes do
+      local genome = self.species[n].genomes[k]
+      table.insert(self.nets, genome:buildNeuralNetwork())
+    end
+  end
+
+  self.generation = self.generation + 1
+
+  return "Generation ".. self.generation-1 .. ":\n".. weak_removed .. " weak species removed\n".. stale_removed .. " stale species removed"
+end
+
 -- returns the current generation
 function Pool:getGeneration()
   return self.generation
@@ -1799,6 +1794,16 @@ function Pool:getLastBestPerformer()
   return self.last_best:buildNeuralNetwork()
 end
 
+-- returns the best fitness from previous generation
+function Pool:getLastBestFitness()
+  return self.top_fitness
+end
+
+-- enables or disables statistics collection
+function Pool:collectStatistics(collect)
+  self.collect_stats = (collect == true)
+end
+
 --------------------------------
 --        STATISTICS          --
 --------------------------------
@@ -1812,11 +1817,12 @@ setmetatable(Statistics, {
   end
 })
 
-function Statistics:new(top_fitness, avg_fitness, med_fitness)
+function Statistics:new(top_fitness, fitness_average, fitness_median, fitness_variance)
   table.insert(self,{
     ["top_fitness"] = top_fitness,
-    ["avg_fitness"] = avg_fitness,
-    ["med_fitness"] = med_fitness,
+    ["fitness_average"] = fitness_average,
+    ["fitness_median"] = fitness_median,
+    ["fitness_variance"] = fitness_variance,
   })
 end
 
@@ -1834,7 +1840,7 @@ function Statistics:getAverageFitnessPoints()
   local points={}
 
   for n=1,#self do
-    table.insert(points, self[n].avg_fitness)
+    table.insert(points, self[n].fitness_average)
   end
 
   return points
@@ -1844,7 +1850,17 @@ function Statistics:getMedianFitnessPoints()
   local points={}
 
   for n=1,#self do
-    table.insert(points, self[n].med_fitness)
+    table.insert(points, self[n].fitness_median)
+  end
+
+  return points
+end
+
+function Statistics:getFitnessVariancePoints()
+  local points={}
+
+  for n=1,#self do
+    table.insert(points, self[n].fitness_variance)
   end
 
   return points
@@ -1854,7 +1870,7 @@ end
 --      PUBLIC FUNCTIONS      --
 --------------------------------
 
-function LuaNEAT.newPool(size, inputs, outputs, noBias)
+function LuaNEAT.newPool(size, inputs, outputs, bias)
   -- error handling: size, inputs and outputs needs to be integers greater than 0
 
   -- handling size
@@ -1890,7 +1906,7 @@ function LuaNEAT.newPool(size, inputs, outputs, noBias)
     error("outputs needs to be an integer", 2)
   end
 
-  noBias = (noBias == true)
+  local noBias = (bias == false)
 
   return Pool(size, inputs, outputs, noBias)
 end
