@@ -3,10 +3,18 @@ local LuaNEAT = require"LuaNEAT"
 local xor = {}
 
 -- initializing LuaNEAT
-local pool_size = 100
+local pool_size = 300
 local inputs = 2 -- number of inputs
 local outputs = 1 -- number of outputs
 local pool = LuaNEAT.newPool(pool_size, inputs, outputs)
+
+pool.parameters.loopedLink = 0
+pool.parameters.addLink = 1
+pool.parameters.addNode = 1
+pool.parameters.enableDisable = 0
+pool.parameters.excessGenesCoefficient   = 2
+pool.parameters.disjointGenesCoefficient = 1
+pool.parameters.matchingGenesCoefficient = 0.5
 
 -- how many seconds until the next generation
 local wait = 0--.25
@@ -14,7 +22,7 @@ local counter = 0
 
 -- stop the simulation when the best net error is below %accuracy%
 local stop=false
-local accuracy=1e-6
+local accuracy=1e-4
 
 -- the neural networks we will get from the pool
 local neural_nets = {}
@@ -30,10 +38,14 @@ local stats_height = 200
 -- [3] the output ([1] xor [2])
 
 local training_set = {
-  {0, 0, 0},
-  {0, 1, 1},
-  {1, 0, 1},
-  {1, 1, 0}
+  --{0, 0, 0},
+  --{0, 1, 1},
+  --{1, 0, 1},
+  --{1, 1, 0}
+  {-1, -1, -1},
+  {-1, 1, 1},
+  {1, -1, 1},
+  {1, 1, -1},
 }
 
 local function map(value, x0, x1, y1, y2)
@@ -63,7 +75,8 @@ function xor.update(dt)
         local err = (outputs[1] - training_set[t][3])^2
         sum = sum + err
       end
-      neural_nets[n]:setFitness(1-sum/4)
+      print(sum)
+      neural_nets[n]:setFitness(8 - math.sqrt(sum))
     end
   end
 
@@ -138,6 +151,7 @@ function xor.draw()
     local err = (results[t] - training_set[t][3])^2
     total_error = total_error + err
   end
+  total_error = math.sqrt(total_error)
   if total_error < accuracy then
     if not stop then
       LuaNEAT.save(pool, "xor")

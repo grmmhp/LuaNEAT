@@ -1,5 +1,5 @@
 local LuaNEAT = {
-  _VERSION = "LuaNEAT Alpha",
+  _VERSION = "LuaNEAT Beta 1.0",
   _DESCRIPTION = "NEAT module for Lua",
   _URL = "https://github.com/grmmhp/LuaNEAT",
   _LICENSE = [[
@@ -31,16 +31,20 @@ local LuaNEAT = {
 --love.math.randomseed(os.time())
 LuaNEAT.random = love.math.random or math.random
 
+function gaussian(mean, variance) --https://rosettacode.org/wiki/Statistics/Normal_distribution#Lua
+    return  math.sqrt(-2 * variance * math.log(LuaNEAT.random())) *
+            math.cos(2 * math.pi * LuaNEAT.random()) + mean
+end
+
 --TODO:
 -- check alter response
 -- remove inability to link two output neurons (?)
 -- remove species:adjustFitnesses()
--- assign species reference to genomes
 -- write other activation functions
 -- pass activation function to neural net
 
---at the end of development:
 -- remove activation from NeuronGene
+-- maybe(?) add "remove node" and "remove link" mutations
 
 
 --------------------------------
@@ -60,33 +64,44 @@ LuaNEAT.parameters = {
   excessGenesCoefficient   = 2,
   disjointGenesCoefficient = 2,
   matchingGenesCoefficient = .4,
-
   sameSpeciesThreshold     = 1,
+
   maxStaleness             = 15,
   tournamentSize           = 3,
 
-  -- mutation parameters
-  weightStep   = .1,
-  responseStep = .1,
+  -- mutation rates and parameters
+  mutateMutationRates = true,
+  mutation_rates = {
+    weightStep          = .1,
+    responseStep        = .1,
+    addLink             = 2,
+    addNode             = .3,
+    loopedLink          = .1,
+    enableDisable       = .1,
 
-  -- mutation rates
-  addLink           = .07,
-  addNode           = .5,
-  loopedLink        = .01,
-  enableDisable     = .01,
-
-  perturbWeight   = .25,
-  replaceWeight   = .1,
-  maxPerturbation = .1,
-  perturbResponse = 0,--.01,
-  alterResponse   = 0,--.2,
-  maxResponse     = 2,
+    perturbWeight   = .25,
+    replaceWeight   = .1,
+    maxPerturbation = .1,
+    perturbResponse = 0,--.01,
+    alterResponse   = 0,--.2,
+    maxResponse     = 2,
+  },
 
   -- crossover
   crossoverRate = .75,
 }
 
-local _DEBUG = true
+local function copy_mutation_rates(parameters)
+  local rates = {}
+  local parameters = parameters or LuaNEAT.parameters
+  for k,v in pairs(parameters.mutation_rates) do
+    rates[k] = v
+  end
+
+  return rates
+end
+
+--[[local _DEBUG = false
 local _DEBUG_TRADITIONAL_FEEDFORWARD_MODE = false
 local _DEBUG_HIDDEN_LAYERS = {}
 
@@ -95,17 +110,17 @@ function LuaNEAT._DEBUG_SET_HIDDEN_LAYERS(layers)
 end
 
 if _DEBUG_TRADITIONAL_FEEDFORWARD_MODE then
-  LuaNEAT.parameters.addLink           = 0
-  LuaNEAT.parameters.addNode           = 0
-  LuaNEAT.parameters.loopedLink        = 0
-  LuaNEAT.parameters.enableDisable     = 0
+  LuaNEAT.parameters.mutation_rates.addLink           = 0
+  LuaNEAT.parameters.mutation_rates.addNode           = 0
+  LuaNEAT.parameters.mutation_rates.loopedLink        = 0
+  LuaNEAT.parameters.mutation_rates.enableDisable     = 0
 end
 
 local oldprint = print
 
-if not _DEBUG then
+if _DEBUG then
   print = function() return; end
-end
+end]]
 
 --------------------------------
 --    ACTIVATION FUNCTIONS    --
@@ -116,12 +131,16 @@ local activations = {
     return 2/(1+math.exp(-x*p)) - 1
   end,
 
+  ["positive-sigmoid"] = function(x,p)
+    return 1/(1+math.exp(-x*p))
+  end,
+
   ["sine"] = function(x,p)
     return math.sin(x*p)
   end,
 
   ["ReLU"] = function(x,p)
-    return math.max(0, math.min(x, 1))
+    return math.max(0, math.min(x*p, 1))
   end,
 }
 
@@ -139,7 +158,7 @@ Genome.mt = {
 }
 
 setmetatable(Genome, {
-  __call = function(t, id, neuron_list, link_list)
+  __call = function(t, id, neuron_list, link_list, mutation_rates)
     local o = {}
 
     o.id = id or -1
@@ -150,12 +169,13 @@ setmetatable(Genome, {
     o.bias = 0
     o.neuron_list = neuron_list or {}
     o.link_list = link_list or {}
+    o.mutation_rates = mutation_rates or {}
 
     return setmetatable(o, Genome.mt)
   end
 })
 
-function Genome.minimal(id, inputs, outputs, parameters, noBias)
+function Genome.minimal(id, inputs, outputs, parameters, mutation_rates, noBias, disconnected)
   -- creates a minimal genome with a given number of inputs and outputs
   -- where every input neuron is connected to a output neuron
   -- it also records the number of inputs on the genome
@@ -187,16 +207,18 @@ function Genome.minimal(id, inputs, outputs, parameters, noBias)
     table.insert(neuron_list, gene)
 
     -- creating links
-    for k=1,inputs do
-      local innovation = k + (inputs)*(n-1)
-      local link = LinkGene(innovation, 0, k, inputs+n, true, false)--innovation, weight, from, to, enabled, recurrent
-      link:randomWeight(parameters.initialWeightRange)
+    if not disconnected then
+      for k=1,inputs do
+        local innovation = k + (inputs)*(n-1)
+        local link = LinkGene(innovation, 0, k, inputs+n, true, false)--innovation, weight, from, to, enabled, recurrent
+        link:randomWeight(parameters.initialWeightRange)
 
-      table.insert(link_list, link)
+        table.insert(link_list, link)
+      end
     end
   end
 
-  genome = Genome(id, neuron_list, link_list)
+  genome = Genome(id, neuron_list, link_list, mutation_rates)
   genome.number_of_inputs = inputs
   genome.number_of_outputs = outputs
   if not noBias then genome.bias = 1 end
@@ -204,7 +226,7 @@ function Genome.minimal(id, inputs, outputs, parameters, noBias)
   return genome
 end
 
-function Genome.layered(id, inputs, outputs, hidden_layers, parameters, noBias)
+function Genome.layered(id, inputs, outputs, hidden_layers, parameters, mutation_rates, noBias, disconnected)
   -- creates a traditional feedforward neural network genome with a given number of inputs and outputs;
   -- hidden_layers is an array containg the number of neurons per hidden layer in a total of #hidden_layers layers
   -- where every neuron in a layer is connected to every neuron in the previous layer
@@ -272,47 +294,51 @@ function Genome.layered(id, inputs, outputs, hidden_layers, parameters, noBias)
       local gene = NeuronGene(hidden_neurons_id_counter, "hidden", parameters.defaultActivation, false, parameters.defaultResponse, n*dx, (#layers-l+1)*dy)
       table.insert(neuron_list, gene)
 
-      if l==1 then
-        for j=1, inputs do
-          local link =  LinkGene(innovation_counter, 0, j, hidden_neurons_id_counter, true, false)--innovation, weight, from, to, enabled, recurrent
-          link:randomWeight(parameters.initialWeightRange)
-          table.insert(link_list, link)
+      if not disconnected then
+        if l==1 then
+          for j=1, inputs do
+            local link =  LinkGene(innovation_counter, 0, j, hidden_neurons_id_counter, true, false)--innovation, weight, from, to, enabled, recurrent
+            link:randomWeight(parameters.initialWeightRange)
+            table.insert(link_list, link)
 
-          innovation_counter = innovation_counter + 1
-        end
-      else
-        for j=1, layers[l-1] do
-          local num_so_far = numNeuronsBeforeLayer(l-1)
-          --print("neuron ".. j .. " from layer ".. l .. " with a total of ".. layers[l].. "neurons; total num of neurons before this layer is ".. num_so_far)
-          local link =  LinkGene(innovation_counter, 0, num_so_far+outputs+j, hidden_neurons_id_counter, true, false)--innovation, weight, from, to, enabled, recurrent
-          link:randomWeight(parameters.initialWeightRange)
-          table.insert(link_list, link)
+            innovation_counter = innovation_counter + 1
+          end
+        else
+          for j=1, layers[l-1] do
+            local num_so_far = numNeuronsBeforeLayer(l-1)
+            --print("neuron ".. j .. " from layer ".. l .. " with a total of ".. layers[l].. "neurons; total num of neurons before this layer is ".. num_so_far)
+            local link =  LinkGene(innovation_counter, 0, num_so_far+outputs+j, hidden_neurons_id_counter, true, false)--innovation, weight, from, to, enabled, recurrent
+            link:randomWeight(parameters.initialWeightRange)
+            table.insert(link_list, link)
 
-          innovation_counter = innovation_counter + 1
+            innovation_counter = innovation_counter + 1
+          end
         end
+
+        hidden_neurons_id_counter = hidden_neurons_id_counter + 1
       end
-
-      hidden_neurons_id_counter = hidden_neurons_id_counter + 1
     end
   end
 
 
-  local num_so_far = numNeuronsBeforeLayer(#layers)
-  for n=1,outputs do
-    -- creating links
-    for k=1,layers[#layers] do
-      local link = LinkGene(innovation_counter, 0, num_so_far+outputs+k, inputs+n, true, false)--innovation, weight, from, to, enabled, recurrent
-      link:randomWeight(parameters.initialWeightRange)
+  if not disconnected then
+    local num_so_far = numNeuronsBeforeLayer(#layers)
+    for n=1,outputs do
+      -- creating links
+      for k=1,layers[#layers] do
+        local link = LinkGene(innovation_counter, 0, num_so_far+outputs+k, inputs+n, true, false)--innovation, weight, from, to, enabled, recurrent
+        link:randomWeight(parameters.initialWeightRange)
 
-      table.insert(link_list, link)
+        table.insert(link_list, link)
 
-      innovation_counter = innovation_counter + 1
+        innovation_counter = innovation_counter + 1
+      end
     end
   end
 
 
 
-  genome = Genome(id, neuron_list, link_list)
+  genome = Genome(id, neuron_list, link_list, mutation_rates)
   genome.number_of_inputs = inputs
   genome.number_of_outputs = outputs
   if not noBias then genome.bias = 1 end
@@ -404,7 +430,10 @@ function Genome.crossover(genome1, genome2)
         offspring:insertLink(link1:copy(), true)
       else
         -- inheriting from genome2
-        offspring:insertLink(link2:copy(), true)
+        local gene = (link2:copy())
+        gene.from = link1.from      -- this prevents neuron id mismatch from ocurring (that can happen when resetting the innovation list every generation)
+        gene.to = link1.to
+        offspring:insertLink(gene, true)
       end
       iter1 = iter1 + 1
       iter2 = iter2 + 1
@@ -426,11 +455,17 @@ function Genome.crossover(genome1, genome2)
   offspring.number_of_outputs = genome1.number_of_outputs
   offspring.bias = genome1.bias
 
+  -- copy genome 1's mutation rates
+  for m,rate in pairs(genome1.mutation_rates) do
+    offspring.mutation_rates[m]=rate
+  end
+
   return offspring
 end
 
 function Genome:newNode(parameters, innovation_list)
   if #self.neuron_list >= parameters.maxNeuronsAmount then return end
+  if #self.link_list == 0 then return end
 
   local neuron  -- the neuron to be added
   local from    -- the neuron with link going to the new neuron
@@ -559,13 +594,14 @@ function Genome:newNode(parameters, innovation_list)
   return "successfully added new node (".. id ..") between nodes ".. from.id .. " and ".. to.id
 end
 
-function Genome:newLink(parameters, innovation_list, noLoop)
+function Genome:newLink(parameters, mutation_rates, innovation_list, noLoop)
   local from, to
   local recurrent = false
 
-  if LuaNEAT.random() < parameters.loopedLink and not noLoop then
+  if (LuaNEAT.random() < mutation_rates.loopedLink) and (not noLoop) then
     -- a looped link will be created
     -- selects a hidden neuron to be selected for a looped link
+    print("looped link to be added! chance is of ".. mutation_rates.loopedLink)
 
     for _=1,parameters.findLinkAttempts do
       local neuron = self:getRandomNeuron(true)
@@ -629,14 +665,24 @@ function Genome:newLink(parameters, innovation_list, noLoop)
 end
 
 function Genome:mutate(parameters, innovation_list)
+  if parameters.mutateMutationRates then
+    for mut,rate in pairs(self.mutation_rates) do
+      if LuaNEAT.random() < .5 then
+        self.mutation_rates[mut] = 0.95*rate
+      else
+        self.mutation_rates[mut] = 1.05263*rate
+      end
+    end
+  end
+
   -- mutating weights
   for n=1,#self.link_list do
     local link = self.link_list[n]
-    if LuaNEAT.random() < parameters.perturbWeight then
-      if LuaNEAT.random() < parameters.replaceWeight then
+    if LuaNEAT.random() < self.mutation_rates.perturbWeight then
+      if LuaNEAT.random() < self.mutation_rates.replaceWeight then
         link:randomWeight(parameters.initialWeightRange)
       else
-        link.weight = link.weight + (LuaNEAT.random()*2-1)*parameters.weightStep--------------------------------------------------------------------
+        link.weight = link.weight + (LuaNEAT.random()*2-1)*self.mutation_rates.weightStep
       end
     end
   end
@@ -644,11 +690,11 @@ function Genome:mutate(parameters, innovation_list)
   -- perturbing neuron responses
   for n=1,#self.neuron_list do
     local neuron = self.neuron_list[n]
-    if LuaNEAT.random() < parameters.perturbResponse then
-      if LuaNEAT.random() < parameters.alterResponse then
-        neuron:alterResponse(parameters.responseStep)
+    if LuaNEAT.random() < self.mutation_rates.perturbResponse then
+      if LuaNEAT.random() < self.mutation_rates.alterResponse then
+        neuron:alterResponse(self.mutation_rates.maxResponse)
       else
-        neuron.response = neuron.response + (LuaNEAT.random()*2-1)*parameters.responseStep
+        neuron.response = neuron.response + (LuaNEAT.random()*2-1)*self.mutation_rates.responseStep
       end
     end
   end
@@ -656,12 +702,12 @@ function Genome:mutate(parameters, innovation_list)
   -- randomly enabling or disabling links
   for n=1, #self.link_list do
     local link = self.link_list[n]
-    if LuaNEAT.random() < parameters.enableDisable then
+    if LuaNEAT.random() < self.mutation_rates.enableDisable then
       link.enabled = not link.enabled
     end
   end
 
-  local p = parameters.addNode
+  local p = self.mutation_rates.addNode
   while p>0 do
     if LuaNEAT.random() < p then
       self:newNode(parameters, innovation_list)
@@ -669,10 +715,10 @@ function Genome:mutate(parameters, innovation_list)
     p = p - 1
   end
 
-  p = parameters.addLink
+  p = self.mutation_rates.addLink
   while p>0 do
-    if LuaNEAT.random() < parameters.addLink then
-      self:newLink(parameters, innovation_list)
+    if LuaNEAT.random() < self.mutation_rates.addLink then
+      self:newLink(parameters, self.mutation_rates, innovation_list)
     end
     p = p - 1
   end
@@ -689,7 +735,7 @@ function Genome:linkExists(from, to)
 end
 
 function Genome:getNeuron(id)
-  local lower, upper = 1, #self.neuron_list
+  --[[local lower, upper = 1, #self.neuron_list
   local index
 
   while lower <= upper do
@@ -700,6 +746,12 @@ function Genome:getNeuron(id)
     elseif self.neuron_list[index].id < id then
       lower = index+1
     else
+      return self.neuron_list[index], index
+    end
+  end]]
+
+  for index=1,#self.neuron_list do
+    if self.neuron_list[index].id == id then
       return self.neuron_list[index], index
     end
   end
@@ -812,6 +864,8 @@ function Genome:buildNeuralNetwork()
     local neuron = self.neuron_list[n]
 
     table.insert(neuron_list, newNeuron(neuron.id, neuron.neuron_type, neuron.response, neuron.y))
+    --print("id=".. neuron.id, "type=".. neuron.neuron_type, "response=".. neuron.response, "y=".. neuron.y)
+    --print()
   end
 
   -- now create the links
@@ -820,9 +874,12 @@ function Genome:buildNeuralNetwork()
 
     if gene.enabled then
       local link = newLink(gene.from, gene.to, gene.weight)
+      --print("link from ".. gene.from .. " to ".. gene.to)
 
       local _,i1 = self:getNeuron(gene.from)
       local _,i2 = self:getNeuron(gene.to)
+
+      --print("indexes ".. i1 .. " and ".. i2)
 
       local from, to = neuron_list[i1], neuron_list[i2]
 
@@ -862,6 +919,10 @@ function Genome:copy()
   genome.number_of_outputs = self.number_of_outputs
   genome.bias = self.bias
 
+  for k,v in pairs(self.mutation_rates) do
+    genome.mutation_rates[k]=v
+  end
+
   return genome
 end
 
@@ -886,6 +947,19 @@ function Genome:draw(x, y, width, height)
     return px*width+x, py*height+y
   end
 
+  local function color_transition(c1, c2, val, min, max)
+    local r, g, b, a
+    r = c1[1]*(max-val)/(max-min) + c2[1]*(val-min)/(max-min)
+    g = c1[2]*(max-val)/(max-min) + c2[2]*(val-min)/(max-min)
+    b = c1[3]*(max-val)/(max-min) + c2[3]*(val-min)/(max-min)
+    a = c1[4]*(max-val)/(max-min) + c2[4]*(val-min)/(max-min)
+
+    return r,g,b,a
+  end
+
+  local negative_neuron_color = {.15,.15,.25,1}--{242/255, 34/255, 34/255, 1}
+  local positive_neuron_color = {242/255, 34/255, 34/255, 1}--{84/255, 140/255, 135/255, 1}
+
   for _, link in ipairs(self.link_list) do
     local neuron1 = self:getNeuron(link.from)
     local neuron2 = self:getNeuron(link.to)
@@ -894,8 +968,10 @@ function Genome:draw(x, y, width, height)
     local x2, y2 = transform(neuron2.x, neuron2.y, width, height)
 
     if link.enabled then
-      local alpha = math.abs(link.weight)/LuaNEAT.parameters.initialWeightRange
-      love.graphics.setColor(1, 1, 1, alpha)
+      local r,g,b,a = color_transition(negative_neuron_color, positive_neuron_color, link.weight, -1, 1)
+      a = math.abs(link.weight)/LuaNEAT.parameters.initialWeightRange
+      love.graphics.setColor(r,g,b,a)
+      love.graphics.setLineWidth(1)
 
       if neuron1.id == neuron2.id then -- link is looped
         love.graphics.circle("line", x1+radius/2, y2-radius/2, radius)
@@ -904,10 +980,10 @@ function Genome:draw(x, y, width, height)
       end
 
       ----------------- DEBUGGGGGGGGGG ---------------------------
-      love.graphics.setColor(.4, .4, 1, 1)
-      local val = link.weight
-      val = string.format("%.3f", val)
-      love.graphics.print(val, (x1+x2)/2, (y1+y2)/2)
+      --love.graphics.setColor(.4, .4, 1, 1)
+      --local val = link.weight
+      --val = string.format("%.3f", val)
+      --love.graphics.print(val, (x1+x2)/2, (y1+y2)/2)
       ------------------------------------------------------------
     end
   end
@@ -915,25 +991,26 @@ function Genome:draw(x, y, width, height)
   for _, neuron in ipairs(self.neuron_list) do
     local xp, yp = transform(neuron.x, neuron.y, width, height)
 
-    if neuron.ntype ~= "bias" then
+    --[[if neuron.ntype ~= "bias" then
       love.graphics.setColor(.8, .8, .8, 1)
     else
       love.graphics.setColor(.9, .9, .9, 1)
-    end
+    end]]
 
+    love.graphics.setColor(color_transition(negative_neuron_color, positive_neuron_color, neuron.value or 0, -1, 1))
     love.graphics.circle("fill", xp, yp, radius)
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.circle("line", xp, yp, radius)
+    --love.graphics.setColor(1, 1, 1, 1)
+    --love.graphics.circle("line", xp, yp, radius)
 
     ----------------- DEBUGGGGGGGGGG ---------------------------
-    love.graphics.setColor(.8, .1, .1, 1)
-    love.graphics.print(neuron.id, xp-3, yp-5)
+    --love.graphics.setColor(.8, .1, .1, 1)
+    --love.graphics.print(neuron.id, xp-3, yp-5)
 
 
-    love.graphics.setColor(.1, .8, .1, 1)
-    local val = neuron.value or 0
-    val = string.format("%.3f", val)
-    love.graphics.print(val, xp+radius+3, yp+radius)
+    --love.graphics.setColor(.1, .8, .1, 1)
+    --local val = neuron.value or 0
+    --val = string.format("%.3f", val)
+    --love.graphics.print(val, xp+radius+3, yp+radius)
     ------------------------------------------------------------
 
     love.graphics.setColor(1, 1, 1, 1)
@@ -1165,6 +1242,19 @@ function InnovationList:printLinks()
   end
 end
 
+function InnovationList:reset(inputs, outputs, noBias, hidden_layers)
+  local neuron_counter = self.neuron_counter
+  local innovation_counter = self.innovation_counter
+  self.neuron_counter = 0
+  self.innovation_counter = 0
+  self.neurons = {}
+  self.links = {}
+
+  self:initialize(inputs, outputs, noBias, hidden_layers)
+  self.neuron_counter = self.neuron_counter
+  self.innovation_counter = self.innovation_counter
+end
+
 --------------------------------
 --           SPECIES          --
 --------------------------------
@@ -1187,7 +1277,7 @@ __call = function(t, id, leader)
   return setmetatable(o, Species.mt)
 end})
 
-function Species:breed(id, parameters, innovation_list)
+function Species:breed(id, parameters, innovation_list, layers)
   local genome1, genome2, offspring, index
 
   genome1, index = self:tournamentSelection(parameters.tournamentSize)
@@ -1199,7 +1289,7 @@ function Species:breed(id, parameters, innovation_list)
     self.genomes[1], self.genomes[index] = self.genomes[index], self.genomes[1]
 
     genome2 = self:tournamentSelection(parameters.tournamentSize, 1)
-    offspring = Genome.crossover(genome1, genome2)
+    offspring = Genome.crossover(genome1, genome2, layers, parameters)
   else
     -- copying genome 1
     offspring = genome1:copy()
@@ -1477,11 +1567,19 @@ setmetatable(Pool, {
     o.collect_stats = true
     o.statistics = Statistics()
     o.innovation_list = InnovationList()
+    o.keep_innovations_forever = false
     o.parameters = {}
 
     -- cloning default parameters
     for k,v in pairs(LuaNEAT.parameters) do
-      o.parameters[k] = v
+      if k=="mutation_rates" then
+        o.parameters[k] = {}
+        for k2,v2 in pairs(LuaNEAT.parameters.mutation_rates) do
+          o.parameters[k][k2] = v2
+        end
+      else
+        o.parameters[k] = v
+      end
     end
 
     return setmetatable(o, Pool.mt)
@@ -1495,8 +1593,10 @@ function Pool:speciate(genome)
     local leader = species.leader
 
     if Genome.sameSpecies(genome, leader, self.parameters) then
+      -- a new species was found
       genome.species = self.species[n]--species.id
-      table.insert(species.genomes, genome); return
+      table.insert(species.genomes, genome)
+      return 1
     end
   end
 
@@ -1509,6 +1609,8 @@ function Pool:speciate(genome)
 
   table.insert(species.genomes, genome)
   table.insert(self.species, species)
+
+  return 0
 end
 
 function Pool:removeStaleSpecies()
@@ -1615,7 +1717,7 @@ function Pool:setInitialHiddenLayers(...)
 end
 
 -- initializes the pool
-function Pool:initialize()
+function Pool:initialize(disconnected)
   if self.generation ~= -1 then error("pool has already been initialized", 2) end
   self.innovation_list:initialize(self.inputs, self.outputs, self.noBias, self.hidden_layers)
 
@@ -1626,9 +1728,15 @@ function Pool:initialize()
     local genome
 
     if #self.hidden_layers == 0 then
-      genome = Genome.minimal(id, self.inputs, self.outputs, self.parameters, self.noBias)
+      genome = Genome.minimal(id, self.inputs, self.outputs, self.parameters, copy_mutation_rates(self.parameters), self.noBias, disconnected)
     else
-      genome = Genome.layered(id, self.inputs, self.outputs, self.hidden_layers, self.parameters, self.noBias)
+      genome = Genome.layered(id, self.inputs, self.outputs, self.hidden_layers, self.parameters, copy_mutation_rates(self.parameters), self.noBias, disconnected)
+    end
+
+    if disconnected then
+      for n=1, math.max(1, self.parameters.mutation_rates.addLink) do
+        genome:newLink(self.parameters, genome.mutation_rates, self.innovation_list, true)
+      end
     end
 
     table.insert(self.nets, genome:buildNeuralNetwork())
@@ -1687,7 +1795,7 @@ function Pool:nextGeneration()
 
     for n = 1, math.floor(species.spawn_amount)-1 do
       self.genome_counter = self.genome_counter + 1
-      local offspring = species:breed(self.genome_counter, self.parameters, self.innovation_list)
+      local offspring = species:breed(self.genome_counter, self.parameters, self.innovation_list, self.layers)
       table.insert(spawn, offspring)
     end
   end
@@ -1732,8 +1840,9 @@ function Pool:nextGeneration()
   end
 
   -- speciating the offsprings
+  local species_created = 0
   for n=1, #spawn do
-    self:speciate(spawn[n])
+    species_created = species_created + self:speciate(spawn[n])
   end
 
   -- building the neural nets
@@ -1749,7 +1858,11 @@ function Pool:nextGeneration()
 
   self.generation = self.generation + 1
 
-  return "Generation ".. self.generation-1 .. ":\n".. weak_removed .. " weak species removed\n".. stale_removed .. " stale species removed"
+  if not self.keep_innovations_forever then
+    self.innovation_list:reset(self.inputs, self.outputs, self.noBias, self.hidden_layers)
+  end
+
+  return "Generation ".. self.generation-1 .. "\n".. weak_removed .. " weak species removed;\n ".. stale_removed .. " stale species removed;\n".. species_created .."species created;\nBest fitness was ".. self.top_fitness
 end
 
 -- returns the current generation
@@ -1804,6 +1917,10 @@ function Pool:collectStatistics(collect)
   self.collect_stats = (collect == true)
 end
 
+function Pool:getTopFitnessPoints()
+  return self.statistics:getTopFitnessPoints()
+end
+
 --------------------------------
 --        STATISTICS          --
 --------------------------------
@@ -1834,6 +1951,18 @@ function Statistics:getTopFitnessPoints()
   end
 
   return points
+end
+
+function Statistics:getAllTimeTopFitness()
+  local max = 0
+
+  for n=1,#self do
+    if self[n].top_fitness > max then
+      max = self[n].top_fitness
+    end
+  end
+
+  return max
 end
 
 function Statistics:getAverageFitnessPoints()
@@ -1911,7 +2040,12 @@ function LuaNEAT.newPool(size, inputs, outputs, bias)
   return Pool(size, inputs, outputs, noBias)
 end
 
-function LuaNEAT.save(pool, filename)
+function LuaNEAT.save(pool, filename, love2d)
+  local open = io.read
+  local write = io.write
+  if love2d then
+  end
+
   local file,error = io.open(filename..".txt", "w+")
   if not file then
     print("cannot open file: ".. error)
@@ -1997,98 +2131,5 @@ end
 function LuaNEAT.version()
   return LuaNEAT._VERSION
 end
-
------------------------------
---------- DEBUGGING ---------
------------------------------
-
-_POOL = LuaNEAT.newPool(10, 3, 2, true)
-
-local function _ASSIGN_FITNESS_TO_ALL()
-  for _,sp in ipairs(_POOL.species) do
-    for i,gen in ipairs(sp.genomes) do
-      gen.fitness = #gen.neuron_list
-    end
-  end
-end
-
-local function _PRINT_FITNESSES()
-  for _,sp in ipairs(_POOL.species) do
-    print(">>>> species: ".. _)
-    for i,gen in ipairs(sp.genomes) do
-      print(gen.fitness)
-    end
-  end
-end
-
---------------------------
-
---_POOL:initialize()
-
---[[for n=1, 15 do
-  _ASSIGN_FITNESS_TO_ALL()
-  _PRINT_FITNESSES()
-
-  print()
-  print(_POOL:nextGeneration())
-end]]
-
---_ASSIGN_FITNESS_TO_ALL()
---_PRINT_FITNESSES()
-
-
---print("DONE WITH EVOLUTION\n")
-
---[[
-_GEN = _POOL.species[1].genomes[1]
-for n=1,5 do
-_GEN:newNode(LuaNEAT.parameters, _POOL.innovation_list)
-end
-_GEN:newNode(LuaNEAT.parameters, _POOL.innovation_list)
-_GEN:newLink(LuaNEAT.parameters, _POOL.innovation_list, true)
-_GEN:newLink(LuaNEAT.parameters, _POOL.innovation_list, true)
-_GEN:newLink(LuaNEAT.parameters, _POOL.innovation_list, true)
-_NET = _GEN:buildNeuralNetwork()
-
-
-
-print("===== NEURON LIST =====")
-_GEN:printNeuronList()
-print("\n\n\n")
-print("===== LINK LIST =====")
-_GEN:printLinkList()
-
-print()
-print("neurons order:")
-for n=1,#_NET.neuron_list do
-  io.write(_NET.neuron_list[n].id .. " > ")
-end
-print()
-print()
---_NET:printNeuronList()
-
-_NET:forward(-1, 0, 1)]]
-
-----------------------------------------
--------------------LuaNEAT._DEBUG_SET_HIDDEN_LAYERS({18, 18})
----------------------_GEN = Genome._DEBUG_CREATE_FEEDFORWARD_GENOME(1, 3, 3, LuaNEAT.parameters, true)
-
-
-
---[[_GEN:printNeuronList()
-print(); print()
-_GEN:printLinkList()]]
-
-
-
------------------------_NET = _GEN:buildNeuralNetwork()
-
-
-
-
-
-
-
-
 
 return LuaNEAT

@@ -1,10 +1,11 @@
 require "LuaNEAT"
+require "grapher"
 local demo = require"demos/snake/snake"
 
 function love.load()
   if demo.load then demo.load() end
 
-  running = false
+  running = true
   step = false
 end
 

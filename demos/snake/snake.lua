@@ -1,4 +1,5 @@
 local neat = require"LuaNEAT"
+local grapher = require "grapher"
 
 local snake_demo = {
   game_window = 500,--love.graphics.getHeight(), -- size of the game window to draw
@@ -10,21 +11,41 @@ local snake_demo = {
 
   waiting_time = 0, -- waiting time (in seconds) to change frame
 
-  num_trials = 3, -- number of trials each network will play the game per generation
+  num_trials = 1, -- number of trials each network will play the game per generation
 
-  mode = "bot", -- "user" or "bot"; user mode is reserved for debugging
+  mode = "bot", -- "user" or "bot";
 }
 
 -- initializing LuaNEAT
-local population_size = 300
+local population_size = 200
 local num_inputs = 24
 local num_outputs = 4
-local neat_pool = neat.newPool(population_size, num_inputs, num_outputs, true) -- the nets wont have bias neurons
+local neat_pool = neat.newPool(population_size, num_inputs, num_outputs, true) -- the nets wont have bias neurons and the first generation genomes will be disconnected
 local neural_nets_list = {}
 
-neat_pool:setInitialHiddenLayers(15, 15)
+neat_pool.parameters.initialWeightRange = 30
+
+neat_pool.parameters.mutation_rates.loopedLink = 0
+neat_pool.parameters.mutation_rates.addLink = 0.988
+neat_pool.parameters.mutation_rates.addNode = 0.085
+neat_pool.parameters.mutation_rates.perturbWeight = 0.460
+neat_pool.parameters.mutation_rates.replaceWeight = 0.0245
+neat_pool.parameters.mutation_rates.weightStep = 0.825
+neat_pool.parameters.mutation_rates.enableDisable = 0.0138
+
+neat_pool.parameters.excessGenesCoefficient   = 1
+neat_pool.parameters.disjointGenesCoefficient = 1
+neat_pool.parameters.matchingGenesCoefficient = 0.4
+neat_pool.parameters.sameSpeciesThreshold     = 3
+
+--[[neat_pool:setInitialHiddenLayers(15, 15)
 neat_pool.parameters.addLink = 0
-neat_pool.parameters.addNode = 0
+neat_pool.parameters.addNode = 0]]
+
+local stats = grapher.newGraph()
+stats.x_label = "Generation"
+stats.y_label = "Fitness"
+
 
 -- some math functions
 local function map(value, x0, x1, y1, y2)
@@ -100,7 +121,7 @@ local function initialize_game()
       fitness = fitness + snake.fitness_list[i]
     end
 
-    fitness = fitness/#snake.fitness_list
+    fitness = 5*fitness/#snake.fitness_list
     neural_nets_list[snake.evaluating_brain]:setFitness(fitness)
 
     snake.fitness_list = {}
@@ -109,8 +130,22 @@ local function initialize_game()
     snake.evaluating_brain = snake.evaluating_brain + 1
 
     if snake.evaluating_brain > population_size then
-      print(neat_pool:nextGeneration())
+      --print(neat_pool:nextGeneration())
+      neat_pool:nextGeneration()
       neural_nets_list = neat_pool:getNeuralNetworks()
+
+      stats:newArrayPlot(neat_pool:getTopFitnessPoints(), "top_fitness", {1,1,0,1})
+      stats.plots["top_fitness"].line_thickness = 3
+      stats.lower_x_range = math.max(1, neat_pool:getGeneration()-1-50)
+      stats.upper_x_range = neat_pool:getGeneration()-1
+      stats.lower_y_range = 0
+      stats.upper_y_range = math.max(40, neat_pool.statistics:getAllTimeTopFitness())
+
+      stats.x_tick_marks_spacing = 10
+      stats.y_tick_marks_spacing = 5
+
+
+      --print("Best fitness from generation ".. neat_pool:getGeneration()-1 .. " is ".. neat_pool:getLastBestFitness())
 
       snake.evaluating_brain = 1
     end
@@ -130,38 +165,38 @@ local function snake_look(dx, dy)
   local found_body = -1
   local distance_to_wall
 
-  print("looking at direction (".. dx .. ", ".. dy.. ")")
-  print("snake is at (".. snake.body[1][1].. ", ".. snake.body[1][2].. ")")
+  --print("looking at direction (".. dx .. ", ".. dy.. ")")
+  --print("snake is at (".. snake.body[1][1].. ", ".. snake.body[1][2].. ")")
 
   while true do
-      for i=2,#snake.body do
-        if (x == snake.body[i][1] and y == snake.body[i][2]) and (found_body == -1) then
-          print("body at (".. x.. ", ".. y.. ")")
-          found_body = 1;
-          break
-        end
+    for i=2,#snake.body do
+      if (x == snake.body[i][1] and y == snake.body[i][2]) and (found_body == -1) then
+        --print("body at (".. x.. ", ".. y.. ")")
+        found_body = 1;
+        break
       end
+    end
 
-      if x == fruit.x and y == fruit.y and (found_food == -1) then
-        print("food at (".. x.. ", ".. y.. ")")
-        found_food = 1;
-      end
+    if x == fruit.x and y == fruit.y and (found_food == -1) then
+      --print("food at (".. x.. ", ".. y.. ")")
+      found_food = 1;
+    end
 
-      if x==1 or x==snake_demo.grid_size then
-        distance_to_wall = 1/(math.abs(snake.body[1][1]-x) + math.abs(snake.body[1][2]-y))
-
-
-        print("wall at (".. x.. ", ".. y.. ")\n\n")
-        return {found_body, found_food, distance_to_wall}
-      end
-
-      if y==1 or y==snake_demo.grid_size then
-        distance_to_wall = 1/((math.abs(snake.body[1][1]-x) + math.abs(snake.body[1][2]-y))/(snake_demo.grid_size-1))
+    if x==1 or x==snake_demo.grid_size then
+      distance_to_wall = 1/(math.abs(snake.body[1][1]-x) + math.abs(snake.body[1][2]-y))
 
 
-        print("wall at (".. x.. ", ".. y.. ")\n\n")
-        return {found_body, found_food, distance_to_wall}
-      end
+      --print("wall at (".. x.. ", ".. y.. ")\n\n")
+      return {found_body, found_food, distance_to_wall}
+    end
+
+    if y==1 or y==snake_demo.grid_size then
+      distance_to_wall = 1/((math.abs(snake.body[1][1]-x) + math.abs(snake.body[1][2]-y))/(snake_demo.grid_size-1))
+
+
+      --print("wall at (".. x.. ", ".. y.. ")\n\n")
+      return {found_body, found_food, distance_to_wall}
+    end
 
     x = x + dx
     y = y + dy
@@ -171,10 +206,10 @@ local function snake_look(dx, dy)
 end
 
 function snake_demo.load()
-  love.window.setMode(snake_demo.game_window*5/3, snake_demo.game_window)
+  love.window.setMode(snake_demo.game_window*3.5, snake_demo.game_window)
 
   -- initializing the neural nets pool
-  neat_pool:initialize()
+  neat_pool:initialize(true)
   neural_nets_list = neat_pool:getNeuralNetworks()
 
   -- immediately initializes game
@@ -428,7 +463,7 @@ function snake_demo.draw()
     "\n".. neat_pool:getSpeciesAmount() .. " species" ..
     "\n\nCandidate #".. snake.evaluating_brain..
     "\nTrial #".. snake.trials ..
-    "\nFitness: ".. snake.fruits_eaten ..
+    "\nFitness: ".. 5*snake.fruits_eaten ..
     "\nEnergy: ".. snake.energy,
     50,
     50
@@ -440,9 +475,10 @@ function snake_demo.draw()
   local margin = 30
 
   local net = neural_nets_list[snake.evaluating_brain]
-  local width = snake_demo.game_window*2/3 - margin
+  local width = snake_demo.game_window*1.3 - margin
   local height = snake_demo.game_window - margin
   net:draw(snake_demo.game_window + margin, margin, width, height - 50)
+  stats:render(snake_demo.game_window + margin + width + margin, margin, width-margin*3, height - 50)
 end
 
 
