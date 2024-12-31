@@ -7,27 +7,42 @@ local snake_demo = {
   grid_y = 0,
   grid_border = .1, -- percentage of the grid that will be its border (number between 0 and 1)
 
-  grid_size = 20, --walls are at x=1, x=grid_size, y=1, y=grid_size
+  grid_size = 50, --walls are at x=1, x=grid_size, y=1, y=grid_size
 
   waiting_time = 0, -- waiting time (in seconds) to change frame
 
-  num_trials = 1, -- number of trials each network will play the game per generation
+  num_trials = 5, -- number of trials each network will play the game per generation
 
   mode = "bot", -- "user" or "bot";
 }
 
+local margin = 30
+local width = snake_demo.game_window*1.3 - margin
+local height = snake_demo.game_window - margin
+
+
 -- initializing LuaNEAT
-local population_size = 200
+local population_size = 1000--300
 local num_inputs = 24
 local num_outputs = 4
-local neat_pool = neat.newPool(population_size, num_inputs, num_outputs, true) -- the nets wont have bias neurons and the first generation genomes will be disconnected
+local neat_pool
 local neural_nets_list = {}
+local load = false
+local save_when_generation_is = 20
+
+if load then
+  neat_pool = neat.load("snake")
+  population_size = neat_pool.size
+else
+  neat_pool = neat.newPool(population_size, num_inputs, num_outputs) -- the first generation genomes will be disconnected--neat.load("snake")
+end
 
 neat_pool.parameters.initialWeightRange = 30
 
 neat_pool.parameters.mutation_rates.loopedLink = 0
-neat_pool.parameters.mutation_rates.addLink = 0.988
-neat_pool.parameters.mutation_rates.addNode = 0.085
+neat_pool.parameters.mutation_rates.addLink = 5--0.988
+neat_pool.parameters.mutation_rates.addNode = .15-- 0.085
+neat_pool.parameters.mutation_rates.addBias = .2-- 0.085
 neat_pool.parameters.mutation_rates.perturbWeight = 0.460
 neat_pool.parameters.mutation_rates.replaceWeight = 0.0245
 neat_pool.parameters.mutation_rates.weightStep = 0.825
@@ -45,6 +60,15 @@ neat_pool.parameters.addNode = 0]]
 local stats = grapher.newGraph()
 stats.x_label = "Generation"
 stats.y_label = "Fitness"
+stats.lower_x_range = 1
+stats.upper_x_range = 2
+stats.lower_y_range = 0
+stats.upper_y_range = 40
+stats.x_tick_marks_spacing = 1
+stats.y_tick_marks_spacing = 5
+
+
+stats:render(width-margin*3, height - 50)
 
 
 -- some math functions
@@ -134,6 +158,8 @@ local function initialize_game()
       neat_pool:nextGeneration()
       neural_nets_list = neat_pool:getNeuralNetworks()
 
+      if neat_pool.generation == save_when_generation_is then neat.save(neat_pool, "snake") end
+
       stats:newArrayPlot(neat_pool:getTopFitnessPoints(), "top_fitness", {1,1,0,1})
       stats.plots["top_fitness"].line_thickness = 3
       stats.lower_x_range = math.max(1, neat_pool:getGeneration()-1-50)
@@ -143,6 +169,12 @@ local function initialize_game()
 
       stats.x_tick_marks_spacing = 10
       stats.y_tick_marks_spacing = 5
+
+      stats:render(width-margin*3, height - 50)
+
+      if neat_pool.generation == 2 then
+        neat_pool:setParameterToEveryone("addLink", 0.988)
+      end
 
 
       --print("Best fitness from generation ".. neat_pool:getGeneration()-1 .. " is ".. neat_pool:getLastBestFitness())
@@ -209,7 +241,7 @@ function snake_demo.load()
   love.window.setMode(snake_demo.game_window*3.5, snake_demo.game_window)
 
   -- initializing the neural nets pool
-  neat_pool:initialize(true)
+  if not load then neat_pool:initialize(true) end
   neural_nets_list = neat_pool:getNeuralNetworks()
 
   -- immediately initializes game
@@ -404,6 +436,8 @@ function snake_demo.keypressed(key)
     elseif snake_demo.waiting_time == .1 then
       snake_demo.waiting_time = 0
     end
+  elseif key=="s" then
+    neat.save(neat_pool, "snake")
   end
 end
 
@@ -472,13 +506,10 @@ function snake_demo.draw()
 
 
   -- draw the neural net
-  local margin = 30
-
   local net = neural_nets_list[snake.evaluating_brain]
-  local width = snake_demo.game_window*1.3 - margin
-  local height = snake_demo.game_window - margin
+
   net:draw(snake_demo.game_window + margin, margin, width, height - 50)
-  stats:render(snake_demo.game_window + margin + width + margin, margin, width-margin*3, height - 50)
+  stats:draw(snake_demo.game_window + margin + width + margin, margin)
 end
 
 

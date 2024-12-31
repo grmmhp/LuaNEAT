@@ -9,6 +9,7 @@ graph.mt = {__index = graph}
 
 function grapher.newGraph(x0, x1, y0, y1)
   local obj = {
+    canvas,
 
     border = true,
     border_thickness = 1,
@@ -83,7 +84,7 @@ function graph:newFunctionPlot(f, x0, x1, step, name, color)
   return self:newPlot(t, name, color)
 end
 
-function graph:render(x, y, width, height)
+function graph:render(width, height)
   local canvas = love.graphics.newCanvas(width, height)
   love.graphics.setBlendMode("alpha", "premultiplied")
   love.graphics.setColor(1, 1, 1, 1)
@@ -102,9 +103,6 @@ function graph:render(x, y, width, height)
 
   if self.draw_y_axis then
   end
-
-  love.graphics.setColor(1,1,1,1)
-  love.graphics.rectangle("line", 0, 0, width, height)
 
   for _,plot in pairs(self.plots) do
     if #plot.points > 2 then
@@ -127,8 +125,18 @@ function graph:render(x, y, width, height)
   love.graphics.setColor(1,1,1,1)
 
   love.graphics.setCanvas()
-  love.graphics.draw(canvas, x, y)
-  canvas = nil
+  self.canvas = canvas
+end
+
+function graph:draw(x, y)
+  if not self.canvas then
+    error("Graph must be rendered before drawing!", 2)
+  end
+
+  local width = self.canvas:getWidth()
+  local height = self.canvas:getHeight()
+
+  love.graphics.draw(self.canvas, x, y)
 
   ---------------------------------------
   -- drawing x and y labels and tick marks
@@ -169,7 +177,6 @@ function graph:render(x, y, width, height)
     tick_y = tick_y + self.y_tick_marks_spacing
   end
 
-
   --drawing axis labels
   x_label = love.graphics.newText(self.label_font, self.x_label)
   x_w = x_label:getWidth()
@@ -185,6 +192,11 @@ function graph:render(x, y, width, height)
 
   love.graphics.draw(y_label, 0, 0)
   love.graphics.pop()
+
+  if self.border then
+    love.graphics.setColor(1,1,1,1)
+    love.graphics.rectangle("line", x, y, width, height)
+  end
 end
 
 

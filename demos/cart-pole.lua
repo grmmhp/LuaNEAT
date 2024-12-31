@@ -8,14 +8,14 @@ local cart_height = 25
 local cart_x = 650/2
 local cart_y = 650/2 - cart_height/2
 local cart_mass = 1
-local force = 600
+local force = 1000
 
 local ball_density = 100--5--.5
 local radius = 5
 
 local length = 100
 
-local offset = math.rad(10)--love.math.random(30, 60)
+local offset = math.rad(15)--love.math.random(30, 60)
 local initial_angle --= ---math.pi/2 + (2*love.math.random(1)-1)*math.rad(offset)
 local last_angle -- used to compute the angular velocity
 
@@ -34,14 +34,31 @@ local objects = {}
 local mode="cart"
 
 -- neat
-local pool = neat.newPool(150, 4, 1, false)--4, 2)
+local pool = neat.newPool(300, 4, 1, true)--4, 2)
+
+pool.parameters.mutation_rates.loopedLink = 0
+pool.parameters.mutation_rates.addLink = 0.988
+pool.parameters.mutation_rates.addNode = 0.085
+pool.parameters.mutation_rates.perturbWeight = 0.460
+pool.parameters.mutation_rates.replaceWeight = 0.0245
+pool.parameters.mutation_rates.weightStep = 0.825
+pool.parameters.mutation_rates.enableDisable = 0.0138
+
+pool.parameters.excessGenesCoefficient   = 1
+pool.parameters.disjointGenesCoefficient = 1
+pool.parameters.matchingGenesCoefficient = 0.4
+pool.parameters.sameSpeciesThreshold     = 1
+
+
 pool:initialize()
 local networks = pool:getNeuralNetworks()
 local evaluating = 1
 local time_surv = 0
-local max_time = 10*60 -- 10 minutes of max simulation time
+local max_time = math.huge--10*60 -- 10 minutes of max simulation time
 
 neat.save(pool, "test.txt")
+
+--neat_pool.parameters.initialWeightRange = 30
 
 
 

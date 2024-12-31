@@ -5,7 +5,7 @@ local LuaNEAT = {
   _LICENSE = [[
     MIT License
 
-    Copyright (c) 2023 Gabriel Mesquita
+    Copyright (c) 2024 Gabriel Mesquita
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -37,9 +37,9 @@ function gaussian(mean, variance) --https://rosettacode.org/wiki/Statistics/Norm
 end
 
 --TODO:
+-- fully implement and test using lua io instead of love2d io when saving/loading file
 -- check alter response
 -- remove inability to link two output neurons (?)
--- remove species:adjustFitnesses()
 -- write other activation functions
 -- pass activation function to neural net
 
@@ -76,6 +76,7 @@ LuaNEAT.parameters = {
     responseStep        = .1,
     addLink             = 2,
     addNode             = .3,
+    addBias             = 0.1,
     loopedLink          = .1,
     enableDisable       = .1,
 
@@ -594,49 +595,62 @@ function Genome:newNode(parameters, innovation_list)
   return "successfully added new node (".. id ..") between nodes ".. from.id .. " and ".. to.id
 end
 
-function Genome:newLink(parameters, mutation_rates, innovation_list, noLoop)
+function Genome:newLink(parameters, mutation_rates, innovation_list, noLoop, forceBias)
   local from, to
   local recurrent = false
 
-  if (LuaNEAT.random() < mutation_rates.loopedLink) and (not noLoop) then
-    -- a looped link will be created
-    -- selects a hidden neuron to be selected for a looped link
-    print("looped link to be added! chance is of ".. mutation_rates.loopedLink)
+  if forceBias then
+    if self.bias == 1 then
+      print("adding bias")
+      from = self.neuron_list[self.number_of_inputs]
+      to = self:getRandomNeuron(true)
 
-    for _=1,parameters.findLinkAttempts do
-      local neuron = self:getRandomNeuron(true)
-
-      -- checking if neuron already have a loop
-      -- and if it isnt an input or bias neuron
-
-      if  (not neuron.recurrent)
-      and (neuron.neuron_type ~= "input")
-      and (neuron.neuron_type ~= "bias") then
-        neuron.recurrent = true
-        recurrent = true
-        from = neuron
-        to = neuron
-
-        break
-      end
+      print("neuron from type is ".. from.neuron_type)
+      print("neuron to type is ".. to.neuron_type)
+    else
+      return
     end
   else
-    -- a normal link will be created
-    -- two random neurons will be selected
-    -- the second one must not be input or bias
-    -- and they must not have already been linked
+    if (LuaNEAT.random() < mutation_rates.loopedLink) and (not noLoop) then
+      -- a looped link will be created
+      -- selects a hidden neuron to be selected for a looped link
+      print("looped link to be added! chance is of ".. mutation_rates.loopedLink)
 
-    for _=1,parameters.findLinkAttempts do
-      neuron1 = self:getRandomNeuron()
-      neuron2 = self:getRandomNeuron(true)
+      for _=1,parameters.findLinkAttempts do
+        local neuron = self:getRandomNeuron(true)
 
-      if  (neuron1.id ~= neuron2.id)
-      and not (neuron1.neuron_type=="output" and neuron2.neuron_type=="output") --------------------------------------------------------------------------------------------------------------REMOOOOOOOOOOOOOOOOOVE
-      and (not self:linkExists(neuron1.id, neuron2.id)) then
-        from = neuron1
-        to = neuron2
+        -- checking if neuron already have a loop
+        -- and if it isnt an input or bias neuron
 
-        break
+        if  (not neuron.recurrent)
+        and (neuron.neuron_type ~= "input")
+        and (neuron.neuron_type ~= "bias") then
+          neuron.recurrent = true
+          recurrent = true
+          from = neuron
+          to = neuron
+
+          break
+        end
+      end
+    else
+      -- a normal link will be created
+      -- two random neurons will be selected
+      -- the second one must not be input or bias
+      -- and they must not have already been linked
+
+      for _=1,parameters.findLinkAttempts do
+        neuron1 = self:getRandomNeuron()
+        neuron2 = self:getRandomNeuron(true)
+
+        if  (neuron1.id ~= neuron2.id)
+        --and not (neuron1.neuron_type=="output" and neuron2.neuron_type=="output") --------------------------------------------------------------------------------------------------------------REMOOOOOOOOOOOOOOOOOVE
+        and (not self:linkExists(neuron1.id, neuron2.id)) then
+          from = neuron1
+          to = neuron2
+
+          break
+        end
       end
     end
   end
@@ -711,6 +725,14 @@ function Genome:mutate(parameters, innovation_list)
   while p>0 do
     if LuaNEAT.random() < p then
       self:newNode(parameters, innovation_list)
+    end
+    p = p - 1
+  end
+
+  local p = self.mutation_rates.addBias
+  while p>0 do
+    if LuaNEAT.random() < p then
+      self:newLink(parameters, self.mutation_rates, innovation_list, false, true)
     end
     p = p - 1
   end
@@ -1361,6 +1383,19 @@ setmetatable(NeuralNetwork, {
   end
 })
 
+function NeuralNetwork:getNeuron(id)
+  for n=1,#self.neuron_list do
+    if self.neuron_list[n].id == id then
+      return self.neuron_list[n]
+    end
+  end
+end
+
+function NeuralNetwork:calculateDepth()
+end
+
+-- NeuralNetwork's public methods
+
 function NeuralNetwork:forward(...)
   local inputs={...}
   local run_type
@@ -1461,16 +1496,6 @@ function NeuralNetwork:forward(...)
 
   return outputs
 end
-
-function NeuralNetwork:getNeuron(id)
-  for n=1,#self.neuron_list do
-    if self.neuron_list[n].id == id then
-      return self.neuron_list[n]
-    end
-  end
-end
-
--- NeuralNetwork's public methods
 
 function NeuralNetwork:draw(x, y, width, height)
   self.genome:draw(x, y, width, height)
@@ -1917,8 +1942,22 @@ function Pool:collectStatistics(collect)
   self.collect_stats = (collect == true)
 end
 
+-- returns the top fitness points
 function Pool:getTopFitnessPoints()
   return self.statistics:getTopFitnessPoints()
+end
+
+-- sets a mutation rate to all genomes in the pool
+function Pool:setParameterToEveryone(parameter, value)
+  if not tonumber(value) then error("parameter must be a number", 2) end
+
+  if LuaNEAT.parameters.mutation_rates[parameter] then
+    for i, species in ipairs(self.species) do
+      for j, genome in ipairs(species.genomes) do
+        genome.mutation_rates[parameter] = value
+      end
+    end
+  end
 end
 
 --------------------------------
@@ -2040,92 +2079,245 @@ function LuaNEAT.newPool(size, inputs, outputs, bias)
   return Pool(size, inputs, outputs, noBias)
 end
 
-function LuaNEAT.save(pool, filename, love2d)
-  local open = io.read
-  local write = io.write
-  if love2d then
-  end
+function LuaNEAT.save(pool, filename)
+  local info
+  local file
 
-  local file,error = io.open(filename..".txt", "w+")
-  if not file then
-    print("cannot open file: ".. error)
-    return
+  if love then
+    info = love.filesystem.getInfo(filename)
+
+    if info then
+      file = love.filesystem.open(filename ..".txt", "w")
+    else
+      file = love.filesystem.newFile(filename ..".txt", "w")
+    end
   end
 
   -- saving order:
-  --  pool info
-  --  pool parameters
-  --  innovation list info
-  --  neuron innovations
-  --  link innovations
-  --  species
+  --"POOL"
+  --"PARAMETERS"
+  --"MUTATION_RATES"
+  --"INNOVATION_LIST"
+  --"NEURON_INNOVATION"
+  --"LINK_INNOVATION"
+  --"SPECIES"
+  --"GENOME"
+  --"GENOME_MUTATION_RATES"
+  --"GENOME_NEURON_GENE"
+  --"GENOME_LINK_GENE"
+  --"STATISTICS"
 
-
-  -- pool info
-  file:write("POOL\n")
+  file:write("%POOL\n")
   for k,v in pairs(pool) do
     if type(v) ~= "table" then
-      file:write(k .. ":".. tostring(v).. "\n")
+      file:write(k .. "=".. tostring(v).. "\n")
     end
   end
 
-  -- pool parameters
-  file:write("PARAMETERS\n")
+  file:write("last_best=")
+  if pool_last_best == nil then file:write("nil\n")
+  else file:write(pool.last_best.id.."\n") end
+
+  file:write("%PARAMETERS\n")
   for k,v in pairs(pool.parameters) do
-    file:write(k .. ":".. tostring(v).. "\n")
+    if type(v) ~= "table" then
+      file:write(k .. "=".. tostring(v).. "\n")
+    end
   end
 
-  -- innovation list info
-  file:write(
-    "INNOVATION LIST\n" ..
+  file:write("%MUTATION_RATES\n")
+  for k,v in pairs(pool.parameters.mutation_rates) do
+    file:write(k .. "=".. tostring(v) .. "\n")
+  end
 
-    "neuron_counter:" .. pool.innovation_list.neuron_counter .. "\n" ..
-    "innovation_counter:" .. pool.innovation_list.neuron_counter .. "\n"
+  file:write(
+    "%INNOVATION_LIST\n" ..
+    "neuron_counter=" .. pool.innovation_list.neuron_counter .. "\n" ..
+    "innovation_counter=" .. pool.innovation_list.neuron_counter .. "\n"
   )
 
-  -- neuron innovations
   for from,list in ipairs(pool.innovation_list.neurons) do
     for n=1,#list do
       file:write(
-        "NEURON INNOVATION".."\n" ..
-        "id:".. list[n].id .."\n" ..
-        "from:".. from .."\n"..
-        "to:".. list[n].to .."\n"
+        "%NEURON_INNOVATION\n" ..
+        "id=".. list[n].id .."\n" ..
+        "from=".. from .."\n"..
+        "to=".. list[n].to .."\n"
       )
     end
   end
 
-  -- link innovations
   for from,list in ipairs(pool.innovation_list.links) do
     for n=1,#list do
       file:write(
-        "LINK INNOVATION".."\n" ..
-        "innovation:".. list[n].innovation .."\n" ..
-        "from:".. from .."\n"..
-        "to:".. list[n].to .."\n"
+        "%LINK_INNOVATION\n" ..
+        "innovation=".. list[n].innovation .."\n" ..
+        "from=".. from .."\n"..
+        "to=".. list[n].to .."\n"
       )
     end
   end
 
-  -- species
   for s=1,#pool.species do
-    file:write("SPECIES\n")
+    file:write("%SPECIES\n")
     for k, v in pairs(pool.species[s]) do
       if type(v) ~= "table" then
-        file:write(k..":"..v.."\n")
+        file:write(k.."="..v.."\n")
+      end
+    end
+
+    for j, genome in pairs(pool.species[s].genomes) do
+      file:write("%GENOME\n")
+      for k, v in pairs(genome) do
+        if type(v) ~= "table" then
+          file:write(k.."="..v.."\n")
+        end
+      end
+
+      file:write("%GENOME_MUTATION_RATES\n")
+      for k, v in pairs(genome.mutation_rates) do
+        file:write(k.."="..v.."\n")
+      end
+
+      for _, gene in pairs(genome.neuron_list) do
+        file:write("%GENOME_NEURON_GENE\n")
+        for k, v in pairs(gene) do
+          file:write(k.."="..tostring(v).."\n")
+        end
+      end
+
+      for _, gene in pairs(genome.link_list) do
+        file:write("%GENOME_LINK_GENE\n")
+        for k, v in pairs(gene) do
+          file:write(k.."="..tostring(v).."\n")
+        end
+      end
+    end
+
+    for i=1, #pool.statistics do
+      file:write("%STATISTICS\n")
+      for stat, val in pairs(pool.statistics[i]) do
+        file:write(stat.."="..val.."\n")
       end
     end
   end
 
-
-
-  --o.neuron_counter = 0
-  --o.innovation_counter = 0
-
   file:close()
+  return "saved successfully"
 end
 
 function LuaNEAT.load(filename)
+  local function variablefy(str)
+    if str == "true" then
+      return true
+    elseif str == "false" then
+      return false
+    elseif str == "nil" then
+      return nil
+    --elseif tonumber(str) then
+      --return tonumber(str)
+    else
+      return tonumber(str) or str
+    end
+  end
+
+  --local k, v =  string.match(essv, "(.+)=(.+)")
+  local iter
+  if love then
+    iter = love.filesystem.lines(filename ..".txt")
+  else
+    --local file =
+  end
+
+  local pool = Pool()
+  local neuron_innovation
+  local link_innovation
+  local species
+  local genome
+  local neuron_gene
+  local link_gene
+  local statistic
+
+  local CURRENT
+  local CURRENT_STRUCTURE
+
+  for line in iter do
+    if string.sub(line, 1, 1) == "%" then CURRENT = line end
+
+    if line == "%NEURON_INNOVATION" then
+      neuron_innovation = {}
+      table.insert(pool.innovation_list.neurons, neuron_innovation)
+
+    elseif line == "%LINK_INNOVATION" then
+      link_innovation = {}
+      table.insert(pool.innovation_list.links, link_innovation)
+
+    elseif line == "%SPECIES" then
+      species = Species()
+      table.insert(pool.species, species)
+
+    elseif line == "%GENOME" then
+      genome = Genome()
+      table.insert(species.genomes, genome)
+
+    elseif line == "%GENOME_NEURON_GENE" then
+      neuron_gene = NeuronGene()
+      table.insert(genome.neuron_list, neuron_gene)
+
+    elseif line == "%GENOME_LINK_GENE" then
+      link_gene = LinkGene()
+      table.insert(genome.link_list, link_gene)
+
+    elseif line == "%STATISTICS" then
+      statistic = {}
+      table.insert(pool.statistics, statistic)
+    else
+      local key, value = string.match(line, "(.+)=(.+)")
+      value = variablefy(value)
+
+      if CURRENT == "%POOL" then
+        pool[key] = value
+      elseif CURRENT == "%PARAMETERS" then
+        pool.parameters[key] = value
+      elseif CURRENT == "%MUTATION_RATES" then
+        pool.parameters.mutation_rates[key] = value
+      elseif CURRENT == "%INNOVATION_LIST" then
+        pool.innovation_list[key] = value
+      elseif CURRENT == "%NEURON_INNOVATION" then
+        neuron_innovation[key] = value
+      elseif CURRENT == "%LINK_INNOVATION" then
+        link_innovation[key] = value
+      elseif CURRENT == "%SPECIES" then
+        species[key] = value
+      elseif CURRENT == "%GENOME" then
+        genome[key] = value
+      elseif CURRENT == "%GENOME_MUTATION_RATES" then
+        genome.mutation_rates[key] = value
+      elseif CURRENT == "%GENOME_NEURON_GENE" then
+        neuron_gene[key] = value
+      elseif CURRENT == "%GENOME_LINK_GENE" then
+        link_gene[key] = value
+      elseif CURRENT == "%STATISTICS" then
+        statistic[key] = value
+      end
+    end
+  end
+
+  print("last best is ".. pool.last_best)
+
+  for _, sp in pairs(pool.species) do
+    for _, gen in pairs(sp.genomes) do
+      table.insert(pool.nets, gen:buildNeuralNetwork())
+
+      if gen.id == pool.last_best then
+        pool.last_best = gen
+      end
+    end
+  end
+
+  print("id is ".. pool.last_best.id)
+
+  return pool
 end
 
 function LuaNEAT.version()
