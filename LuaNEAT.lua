@@ -5,7 +5,7 @@ local LuaNEAT = {
   _LICENSE = [[
     MIT License
 
-    Copyright (c) 2024 Gabriel Mesquita
+    Copyright (c) 2025 Gabriel Mesquita
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -668,7 +668,7 @@ function Genome:newLink(parameters, mutation_rates, innovation_list, noLoop, for
 
   -- checking if link is recurrent
   -- outputs have y=0 and inputs y=1
-  if from.y < to.y then recurrent=true; return end----------------------------------------------------------------------------------------------------------REMOVE THE RETURN
+  if from.y < to.y then recurrent=true; end
 
   -- innovation, weight, from, to, enabled, recurrent
   local gene = LinkGene(id, 0, from.id, to.id, true, recurrent)
@@ -2093,8 +2093,36 @@ function LuaNEAT.save(pool, filename)
     end
   end
 
+  local function save_genome(genome)
+    for k, v in pairs(genome) do
+      if type(v) ~= "table" then
+        file:write(k.."="..v.."\n")
+      end
+    end
+
+    file:write("%GENOME_MUTATION_RATES\n")
+    for k, v in pairs(genome.mutation_rates) do
+      file:write(k.."="..v.."\n")
+    end
+
+    for _, gene in pairs(genome.neuron_list) do
+      file:write("%GENOME_NEURON_GENE\n")
+      for k, v in pairs(gene) do
+        file:write(k.."="..tostring(v).."\n")
+      end
+    end
+
+    for _, gene in pairs(genome.link_list) do
+      file:write("%GENOME_LINK_GENE\n")
+      for k, v in pairs(gene) do
+        file:write(k.."="..tostring(v).."\n")
+      end
+    end
+  end
+
   -- saving order:
   --"POOL"
+  -- LAST BEST (and then the other genome saving stuff (mut rates and genes))
   --"PARAMETERS"
   --"MUTATION_RATES"
   --"INNOVATION_LIST"
@@ -2114,10 +2142,6 @@ function LuaNEAT.save(pool, filename)
     end
   end
 
-  file:write("last_best=")
-  if pool_last_best == nil then file:write("nil\n")
-  else file:write(pool.last_best.id.."\n") end
-
   file:write("%PARAMETERS\n")
   for k,v in pairs(pool.parameters) do
     if type(v) ~= "table" then
@@ -2128,6 +2152,12 @@ function LuaNEAT.save(pool, filename)
   file:write("%MUTATION_RATES\n")
   for k,v in pairs(pool.parameters.mutation_rates) do
     file:write(k .. "=".. tostring(v) .. "\n")
+  end
+
+  if pool.last_best then
+    file:write("%LAST_BEST\n")
+    file:write("species=".. pool.last_best.species.id.."\n")
+    save_genome(pool.last_best)
   end
 
   file:write(
@@ -2168,30 +2198,7 @@ function LuaNEAT.save(pool, filename)
 
     for j, genome in pairs(pool.species[s].genomes) do
       file:write("%GENOME\n")
-      for k, v in pairs(genome) do
-        if type(v) ~= "table" then
-          file:write(k.."="..v.."\n")
-        end
-      end
-
-      file:write("%GENOME_MUTATION_RATES\n")
-      for k, v in pairs(genome.mutation_rates) do
-        file:write(k.."="..v.."\n")
-      end
-
-      for _, gene in pairs(genome.neuron_list) do
-        file:write("%GENOME_NEURON_GENE\n")
-        for k, v in pairs(gene) do
-          file:write(k.."="..tostring(v).."\n")
-        end
-      end
-
-      for _, gene in pairs(genome.link_list) do
-        file:write("%GENOME_LINK_GENE\n")
-        for k, v in pairs(gene) do
-          file:write(k.."="..tostring(v).."\n")
-        end
-      end
+      save_genome(genome)
     end
 
     for i=1, #pool.statistics do
@@ -2230,6 +2237,7 @@ function LuaNEAT.load(filename)
   end
 
   local pool = Pool()
+  local last_best
   local neuron_innovation
   local link_innovation
   local species
@@ -2242,40 +2250,48 @@ function LuaNEAT.load(filename)
   local CURRENT_STRUCTURE
 
   for line in iter do
-    if string.sub(line, 1, 1) == "%" then CURRENT = line end
+    if string.sub(line, 1, 1) == "%" then
+      CURRENT = line
 
-    if line == "%NEURON_INNOVATION" then
-      neuron_innovation = {}
-      table.insert(pool.innovation_list.neurons, neuron_innovation)
+      if line == "%LAST_BEST" then
+        genome = Genome()
+        pool.last_best = genome
 
-    elseif line == "%LINK_INNOVATION" then
-      link_innovation = {}
-      table.insert(pool.innovation_list.links, link_innovation)
+      elseif line == "%NEURON_INNOVATION" then
+        neuron_innovation = {}
+        table.insert(pool.innovation_list.neurons, neuron_innovation)
 
-    elseif line == "%SPECIES" then
-      species = Species()
-      table.insert(pool.species, species)
+      elseif line == "%LINK_INNOVATION" then
+        link_innovation = {}
+        table.insert(pool.innovation_list.links, link_innovation)
 
-    elseif line == "%GENOME" then
-      genome = Genome()
-      table.insert(species.genomes, genome)
+      elseif line == "%SPECIES" then
+        species = Species()
+        table.insert(pool.species, species)
 
-    elseif line == "%GENOME_NEURON_GENE" then
-      neuron_gene = NeuronGene()
-      table.insert(genome.neuron_list, neuron_gene)
+      elseif line == "%GENOME" then
+        genome = Genome()
+        genome.species = species
+        table.insert(species.genomes, genome)
 
-    elseif line == "%GENOME_LINK_GENE" then
-      link_gene = LinkGene()
-      table.insert(genome.link_list, link_gene)
+      elseif line == "%GENOME_NEURON_GENE" then
+        neuron_gene = NeuronGene()
+        table.insert(genome.neuron_list, neuron_gene)
 
-    elseif line == "%STATISTICS" then
-      statistic = {}
-      table.insert(pool.statistics, statistic)
+      elseif line == "%GENOME_LINK_GENE" then
+        link_gene = LinkGene()
+        table.insert(genome.link_list, link_gene)
+
+      elseif line == "%STATISTICS" then
+        statistic = {}
+        table.insert(pool.statistics, statistic)
+      end
     else
       local key, value = string.match(line, "(.+)=(.+)")
       value = variablefy(value)
 
       if CURRENT == "%POOL" then
+        print("key is ".. key)
         pool[key] = value
       elseif CURRENT == "%PARAMETERS" then
         pool.parameters[key] = value
@@ -2289,7 +2305,12 @@ function LuaNEAT.load(filename)
         link_innovation[key] = value
       elseif CURRENT == "%SPECIES" then
         species[key] = value
-      elseif CURRENT == "%GENOME" then
+        if pool.last_best then
+          if key == "id" and value == pool.last_best.species then
+            pool.last_best.species = species
+          end
+        end
+      elseif CURRENT == "%GENOME" or CURRENT == "%LAST_BEST" then
         genome[key] = value
       elseif CURRENT == "%GENOME_MUTATION_RATES" then
         genome.mutation_rates[key] = value
@@ -2303,19 +2324,11 @@ function LuaNEAT.load(filename)
     end
   end
 
-  print("last best is ".. pool.last_best)
-
   for _, sp in pairs(pool.species) do
     for _, gen in pairs(sp.genomes) do
       table.insert(pool.nets, gen:buildNeuralNetwork())
-
-      if gen.id == pool.last_best then
-        pool.last_best = gen
-      end
     end
   end
-
-  print("id is ".. pool.last_best.id)
 
   return pool
 end

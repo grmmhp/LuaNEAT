@@ -7,7 +7,7 @@ local snake_demo = {
   grid_y = 0,
   grid_border = .1, -- percentage of the grid that will be its border (number between 0 and 1)
 
-  grid_size = 50, --walls are at x=1, x=grid_size, y=1, y=grid_size
+  grid_size = 30, --walls are at x=1, x=grid_size, y=1, y=grid_size
 
   waiting_time = 0, -- waiting time (in seconds) to change frame
 
@@ -22,7 +22,7 @@ local height = snake_demo.game_window - margin
 
 
 -- initializing LuaNEAT
-local population_size = 1000--300
+local population_size = 500--300
 local num_inputs = 24
 local num_outputs = 4
 local neat_pool
@@ -31,7 +31,7 @@ local load = false
 local save_when_generation_is = 20
 
 if load then
-  neat_pool = neat.load("snake")
+  neat_pool = neat.load("snake_gen103_poolsize1000")
   population_size = neat_pool.size
 else
   neat_pool = neat.newPool(population_size, num_inputs, num_outputs) -- the first generation genomes will be disconnected--neat.load("snake")
